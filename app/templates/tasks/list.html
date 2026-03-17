@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="grid two-columns">
+    <div class="card">
+        <h2>Create task</h2>
+        <form method="post" action="/tasks/create" class="stack">
+            <label>
+                Title
+                <input type="text" name="title" required>
+            </label>
+            <label>
+                Description
+                <textarea name="description" rows="4"></textarea>
+            </label>
+            <label>
+                Assignee
+                <input type="text" name="assignee">
+            </label>
+            <label>
+                Due date
+                <input type="datetime-local" name="due_date">
+            </label>
+            <label>
+                Telegram chat ID
+                <input type="text" name="telegram_chat_id" placeholder="Optional">
+            </label>
+            <button type="submit">Create task</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Import CSV</h2>
+        <p>Columns: <code>title, description, assignee, due_date, telegram_chat_id</code></p>
+        <p>Date formats: <code>YYYY-MM-DD</code> or <code>YYYY-MM-DD HH:MM</code></p>
+        <form method="post" action="/tasks/import" enctype="multipart/form-data" class="stack">
+            <input type="file" name="file" accept=".csv" required>
+            <button type="submit">Import file</button>
+        </form>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Task database</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Assignee</th>
+                <th>Status</th>
+                <th>Due date</th>
+                <th>Telegram</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td>{{ task.id }}</td>
+                <td>
+                    <strong>{{ task.title }}</strong><br>
+                    <small>{{ task.description or "-" }}</small>
+                </td>
+                <td>{{ task.assignee or "-" }}</td>
+                <td>{{ task.status }}</td>
+                <td>{{ task.due_date.strftime("%Y-%m-%d %H:%M") if task.due_date else "-" }}</td>
+                <td>{{ task.telegram_chat_id or "-" }}</td>
+                <td>
+                    <form method="post" action="/tasks/{{ task.id }}/status" class="inline-form">
+                        <select name="status">
+                            <option value="new" {% if task.status == "new" %}selected{% endif %}>new</option>
+                            <option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>in_progress</option>
+                            <option value="done" {% if task.status == "done" %}selected{% endif %}>done</option>
+                        </select>
+                        <button type="submit">Save</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">No tasks yet. Create one or import CSV.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

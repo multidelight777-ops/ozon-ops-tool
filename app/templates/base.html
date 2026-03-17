@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketplace Ops Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div>
+            <h1>Marketplace Ops Tool</h1>
+            <p>Simple internal dashboard for tasks and notifications</p>
+        </div>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/tasks/">Tasks</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
