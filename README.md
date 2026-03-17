@@ -16,9 +16,10 @@
 - dashboard с базовой статистикой
 - база задач
 - импорт CSV
+- импорт `plans.csv` из корня проекта с upsert по `sku + planned_date`
 - планировщик по датам
 - Telegram-уведомления
-- журнал действий
+- журнал действий (`AuditLog`)
 - `.env.example`
 - `requirements.txt`
 
@@ -90,6 +91,12 @@ uvicorn app.main:app --reload
 - `http://127.0.0.1:8000/` - dashboard
 - `http://127.0.0.1:8000/tasks/` - список задач, создание и импорт CSV
 
+Чтобы импортировать план-файл из корня проекта:
+
+1. Положите `plans.csv` рядом с `README.md`
+2. Откройте dashboard
+3. Нажмите кнопку `Import CSV`
+
 ## Формат CSV
 
 Используйте такие заголовки:
@@ -104,6 +111,13 @@ title,description,assignee,due_date,telegram_chat_id
 
 - `YYYY-MM-DD`
 - `YYYY-MM-DD HH:MM`
+
+Для корневого `plans.csv` ожидаются поля:
+
+```csv
+sku,planned_date,quantity,delivery_type,planned_price,comment,title
+SKU-001,2026-03-20 10:00,120,fbo,1499,Priority delivery,Plan for SKU-001
+```
 
 ## Что где находится
 

@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if message %}
+<section class="card notice">
+    <strong>{{ message }}</strong>
+</section>
+{% endif %}
+
 <section class="grid two-columns three-cards">
     <div class="card stat">
         <h2>Total tasks</h2>
@@ -16,6 +22,32 @@
     </div>
 </section>
 
+<section class="card">
+    <h2>Plans Import</h2>
+    <p>The button reads <code>plans.csv</code> directly from the project root and updates tasks by <code>sku + planned_date</code>.</p>
+    <form method="post" action="/tasks/import-plans" class="stack">
+        <button type="submit">Import CSV</button>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Telegram Test</h2>
+    <p>Sends <code>TEST OK</code> using <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code>.</p>
+    <form method="post" action="/telegram/test" class="stack">
+        <button type="submit">Send test Telegram message</button>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Status Overview</h2>
+    <div class="status-list">
+        <span class="status-badge status-planned">planned</span>
+        <span class="status-badge status-ready_for_review">ready_for_review</span>
+        <span class="status-badge status-approved">approved</span>
+        <span class="status-badge status-done">done</span>
+    </div>
+</section>
+
 <section class="grid two-columns">
     <div class="card">
         <h2>Recent tasks</h2>
@@ -23,22 +55,26 @@
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>SKU</th>
                     <th>Title</th>
                     <th>Status</th>
-                    <th>Due date</th>
+                    <th>Planned date</th>
                 </tr>
             </thead>
             <tbody>
                 {% for task in recent_tasks %}
                 <tr>
                     <td>{{ task.id }}</td>
+                    <td>{{ task.sku or "-" }}</td>
                     <td>{{ task.title }}</td>
-                    <td>{{ task.status }}</td>
-                    <td>{{ task.due_date.strftime("%Y-%m-%d %H:%M") if task.due_date else "-" }}</td>
+                    <td>
+                        <span class="status-badge status-{{ task.status }}">{{ task.status }}</span>
+                    </td>
+                    <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4">No tasks yet.</td>
+                    <td colspan="5">No tasks yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

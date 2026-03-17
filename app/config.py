@@ -16,6 +16,7 @@ class Settings:
     DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app' / 'data' / 'ops.db'}")
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
     TELEGRAM_DEFAULT_CHAT_ID = os.getenv("TELEGRAM_DEFAULT_CHAT_ID", "")
     SCHEDULER_POLL_SECONDS = int(os.getenv("SCHEDULER_POLL_SECONDS", "60"))
 

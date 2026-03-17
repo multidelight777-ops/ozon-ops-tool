@@ -77,6 +77,54 @@ body {
     box-shadow: 0 10px 30px rgba(47, 36, 29, 0.06);
 }
 
+.notice {
+    border-color: #6aa567;
+    background: #edf8eb;
+}
+
+.status-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    border: 1px solid var(--line);
+    background: #f3ece3;
+    color: var(--text);
+}
+
+.status-planned {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
+}
+
+.status-ready_for_review {
+    background: #fff4cc;
+    border-color: #f5cf5b;
+    color: #8a5a00;
+}
+
+.status-approved {
+    background: #e8f7ee;
+    border-color: #99d5ad;
+    color: #166534;
+}
+
+.status-done {
+    background: #eceff3;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
 .stat strong {
     font-size: 36px;
     color: var(--accent);

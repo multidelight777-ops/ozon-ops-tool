@@ -46,10 +46,14 @@
         <thead>
             <tr>
                 <th>ID</th>
+                <th>SKU</th>
                 <th>Title</th>
                 <th>Assignee</th>
                 <th>Status</th>
-                <th>Due date</th>
+                <th>Planned date</th>
+                <th>Quantity</th>
+                <th>Delivery</th>
+                <th>Planned price</th>
                 <th>Telegram</th>
                 <th>Action</th>
             </tr>
@@ -58,13 +62,17 @@
             {% for task in tasks %}
             <tr>
                 <td>{{ task.id }}</td>
+                <td>{{ task.sku or "-" }}</td>
                 <td>
                     <strong>{{ task.title }}</strong><br>
-                    <small>{{ task.description or "-" }}</small>
+                    <small>{{ task.comment or task.description or "-" }}</small>
                 </td>
                 <td>{{ task.assignee or "-" }}</td>
                 <td>{{ task.status }}</td>
-                <td>{{ task.due_date.strftime("%Y-%m-%d %H:%M") if task.due_date else "-" }}</td>
+                <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
+                <td>{{ task.quantity }}</td>
+                <td>{{ task.delivery_type or "-" }}</td>
+                <td>{{ task.planned_price or "-" }}</td>
                 <td>{{ task.telegram_chat_id or "-" }}</td>
                 <td>
                     <form method="post" action="/tasks/{{ task.id }}/status" class="inline-form">
@@ -79,7 +87,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="7">No tasks yet. Create one or import CSV.</td>
+                <td colspan="10">No tasks yet. Create one or import CSV.</td>
             </tr>
             {% endfor %}
         </tbody>
