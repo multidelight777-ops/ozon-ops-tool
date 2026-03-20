@@ -165,7 +165,7 @@ def import_plans_csv(db: Session = Depends(get_db)):
     """
     csv_path = Path(BASE_DIR) / "plans.csv"
     if not csv_path.exists():
-        return RedirectResponse(url="/?message=plans.csv not found in the project root", status_code=303)
+        return RedirectResponse(url="/?message=Файл plans.csv не найден в корне проекта", status_code=303)
 
     processed_count = 0
     created_count = 0
@@ -253,15 +253,15 @@ def import_plans_csv(db: Session = Depends(get_db)):
     log_action(
         db,
         "plans_csv_imported",
-        "Imported plans.csv from project root. "
-        f"Processed: {processed_count}, created: {created_count}, updated: {updated_count}, "
-        f"skipped: {skipped_count}, errors: {error_count}.",
+        "Импортирован plans.csv из корня проекта. "
+        f"Обработано: {processed_count}, создано: {created_count}, обновлено: {updated_count}, "
+        f"пропущено: {skipped_count}, ошибок: {error_count}.",
     )
     return RedirectResponse(
         url=(
             "/?message="
-            f"plans.csv import finished. Processed: {processed_count}, created: {created_count}, "
-            f"updated: {updated_count}, skipped: {skipped_count}, errors: {error_count}"
+            f"Импорт plans.csv завершён. Обработано: {processed_count}, создано: {created_count}, "
+            f"обновлено: {updated_count}, пропущено: {skipped_count}, ошибок: {error_count}"
         ),
         status_code=303,
     )

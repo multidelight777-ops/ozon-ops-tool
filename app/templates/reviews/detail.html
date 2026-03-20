@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% set source_type_map = {
+    "review": "Отзыв",
+    "question": "Вопрос"
+} %}
+{% set category_map = {
+    "позитив": "Позитивный",
+    "нейтральный": "Нейтральный",
+    "негатив": "Негативный",
+    "вопрос": "Вопрос"
+} %}
+{% set review_status_map = {
+    "new": "Новый",
+    "drafted": "Черновик",
+    "approved": "Одобрен",
+    "sent": "Отправлен",
+    "failed": "Ошибка",
+    "archived": "Архив",
+    "одобрен": "Одобрен",
+    "отправлен": "Отправлен",
+    "ошибка": "Ошибка",
+    "архив": "Архив",
+    "ручная_обработка": "Ручная обработка"
+} %}
+{% set risk_map = {
+    "низкий": "Низкий",
+    "средний": "Средний",
+    "высокий": "Высокий",
+    "low": "Низкий",
+    "medium": "Средний",
+    "high": "Высокий"
+} %}
+{% set automation_map = {
+    "auto": "Авто",
+    "review_required": "Нужна проверка",
+    "manual_only": "Только вручную"
+} %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>Карточка отзыва</h2>
+        <p>Детальная страница отзыва или вопроса Ozon в едином визуальном стиле приложения.</p>
+    </div>
+    <a href="/reviews/" class="secondary-button">Назад к отзывам</a>
+</section>
+
+{% if message %}
+<section class="card notice">
+    <strong>{{ message }}</strong>
+</section>
+{% endif %}
+
+<section class="grid two-columns">
+    <div class="card">
+        <h2>Основные данные</h2>
+        <dl class="detail-grid">
+            <dt>SKU</dt>
+            <dd>{{ review.sku or "-" }}</dd>
+            <dt>Название товара</dt>
+            <dd>{{ review.product_name or "-" }}</dd>
+            <dt>Автор</dt>
+            <dd>{{ review.author_name or "-" }}</dd>
+            <dt>Оценка</dt>
+            <dd>{{ review.rating if review.rating is not none else "-" }}</dd>
+            <dt>Тип</dt>
+            <dd>{{ source_type_map.get(review.source_type, review.source_type or "-") }}</dd>
+            <dt>Дата публикации</dt>
+            <dd>{{ review.published_at.strftime("%Y-%m-%d %H:%M") if review.published_at else "-" }}</dd>
+            <dt>Внешний ID</dt>
+            <dd>{{ review.external_id or "-" }}</dd>
+        </dl>
+    </div>
+
+    <div class="card">
+        <h2>Обработка</h2>
+        <dl class="detail-grid">
+            <dt>Статус</dt>
+            <dd>{{ review_status_map.get(review.status, review.status or "-") }}</dd>
+            <dt>Категория</dt>
+            <dd>{{ category_map.get(review.category, review.category or "-") }}</dd>
+            <dt>Уровень риска</dt>
+            <dd><span class="risk-badge risk-{{ review.risk_level }}">{{ risk_map.get(review.risk_level, review.risk_level or "-") }}</span></dd>
+            <dt>Режим автоматизации</dt>
+            <dd>{{ automation_map.get(review.automation_mode, review.automation_mode or "-") }}</dd>
+            <dt>Уверенность</dt>
+            <dd>{{ "%.2f"|format(review.confidence_score) if review.confidence_score is not none else "-" }}</dd>
+        </dl>
+    </div>
+</section>
+
+<section class="grid two-columns">
+    <div class="card">
+        <h2>Текст отзыва</h2>
+        <div class="content-box">{{ review.text or "-" }}</div>
+    </div>
+
+    <div class="card">
+        <h2>Ответы</h2>
+        <p><strong>Черновик ответа</strong></p>
+        <div class="content-box">{{ review.draft_reply or "-" }}</div>
+
+        <p><strong>Финальный ответ</strong></p>
+        {% if edit_mode %}
+        <form method="post" action="/reviews/{{ review.id }}/edit" class="stack">
+            <textarea name="final_reply" rows="8">{{ review.final_reply or review.draft_reply or "" }}</textarea>
+            <button type="submit">Сохранить финальный ответ</button>
+        </form>
+        {% else %}
+        <div class="content-box">{{ review.final_reply or "-" }}</div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Действия</h2>
+            <p>Ручной workflow для генерации, одобрения, редактирования и отправки ответа.</p>
+        </div>
+    </div>
+    <div class="actions-row">
+        <form method="post" action="/reviews/{{ review.id }}/generate-reply">
+            <button type="submit">Сгенерировать ответ</button>
+        </form>
+        <form method="post" action="/reviews/{{ review.id }}/approve">
+            <button type="submit">Одобрить</button>
+        </form>
+        <form method="get" action="/reviews/{{ review.id }}">
+            <input type="hidden" name="edit" value="1">
+            <button type="submit">Редактировать</button>
+        </form>
+        <form method="post" action="/reviews/{{ review.id }}/send">
+            <button type="submit">Отправить</button>
+        </form>
+        <form method="post" action="/reviews/{{ review.id }}/archive">
+            <button type="submit" class="danger-button">В архив</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

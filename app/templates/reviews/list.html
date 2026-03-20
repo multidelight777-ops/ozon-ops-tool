@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% set source_type_map = {
+    "review": "Отзыв",
+    "question": "Вопрос"
+} %}
+{% set category_map = {
+    "позитив": "Позитивный",
+    "нейтральный": "Нейтральный",
+    "негатив": "Негативный",
+    "вопрос": "Вопрос"
+} %}
+{% set review_status_map = {
+    "new": "Новый",
+    "drafted": "Черновик",
+    "approved": "Одобрен",
+    "sent": "Отправлен",
+    "failed": "Ошибка",
+    "archived": "Архив",
+    "одобрен": "Одобрен",
+    "отправлен": "Отправлен",
+    "ошибка": "Ошибка",
+    "архив": "Архив",
+    "ручная_обработка": "Ручная обработка"
+} %}
+{% set risk_map = {
+    "низкий": "Низкий",
+    "средний": "Средний",
+    "высокий": "Высокий",
+    "low": "Низкий",
+    "medium": "Средний",
+    "high": "Высокий"
+} %}
+{% set automation_map = {
+    "auto": "Авто",
+    "review_required": "Нужна проверка",
+    "manual_only": "Только вручную"
+} %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>Отзывы</h2>
+        <p>Светлый интерфейс в едином стиле для отзывов, вопросов, фильтров и ручной обработки.</p>
+    </div>
+</section>
+
+{% if request.query_params.get("message") %}
+<section class="card notice">
+    <strong>{{ request.query_params.get("message") }}</strong>
+</section>
+{% endif %}
+
+<section class="grid three-cards">
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Всего отзывов</p>
+                <div class="metric-value">{{ total_reviews }}</div>
+                <p class="metric-foot">Все отзывы и вопросы Ozon</p>
+            </div>
+            <span class="metric-icon">✦</span>
+        </div>
+    </div>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">После фильтров</p>
+                <div class="metric-value">{{ filtered_reviews_count }}</div>
+                <p class="metric-foot">Текущая выборка на странице</p>
+            </div>
+            <span class="metric-icon">⌕</span>
+        </div>
+    </div>
+    <div class="card">
+        <div class="section-head">
+            <div>
+                <h2>Быстрые действия</h2>
+                <p>Импорт, переанализ и генерация ответов.</p>
+            </div>
+        </div>
+        <div class="panel-actions">
+            <form method="post" action="/reviews/import">
+                <button type="submit">Импортировать reviews.csv</button>
+            </form>
+            <form method="post" action="/reviews/reanalyze">
+                <button type="submit">Переанализировать</button>
+            </form>
+            <form method="post" action="/reviews/generate-new">
+                <button type="submit">Сгенерировать ответы для новых</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Фильтры</h2>
+            <p>Отбирайте отзывы по риску, категории, автоматизации и содержимому.</p>
+        </div>
+    </div>
+    <form method="get" action="/reviews/" class="reviews-filter-grid">
+        <label>
+            SKU
+            <input type="text" name="sku" value="{{ filters.sku }}" placeholder="SKU">
+        </label>
+        <label>
+            Тип
+            <select name="source_type">
+                <option value="">Все</option>
+                {% for option in source_type_options %}
+                <option value="{{ option }}" {% if filters.source_type == option %}selected{% endif %}>{{ source_type_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Категория
+            <select name="category">
+                <option value="">Все</option>
+                {% for option in category_options %}
+                <option value="{{ option }}" {% if filters.category == option %}selected{% endif %}>{{ category_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Оценка
+            <select name="rating">
+                <option value="">Все</option>
+                {% for option in rating_options %}
+                <option value="{{ option }}" {% if filters.rating == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Статус
+            <select name="status">
+                <option value="">Все</option>
+                {% for option in status_options %}
+                <option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ review_status_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Уровень риска
+            <select name="risk_level">
+                <option value="">Все</option>
+                {% for option in risk_level_options %}
+                <option value="{{ option }}" {% if filters.risk_level == option %}selected{% endif %}>{{ risk_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Автоматизация
+            <select name="automation_mode">
+                <option value="">Все</option>
+                {% for option in automation_mode_options %}
+                <option value="{{ option }}" {% if filters.automation_mode == option %}selected{% endif %}>{{ automation_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Уверенность
+            <select name="confidence_score">
+                <option value="">Все</option>
+                <option value="0.50" {% if filters.confidence_score == "0.50" %}selected{% endif %}>>= 0.50</option>
+                <option value="0.70" {% if filters.confidence_score == "0.70" %}selected{% endif %}>>= 0.70</option>
+                <option value="0.85" {% if filters.confidence_score == "0.85" %}selected{% endif %}>>= 0.85</option>
+                <option value="0.95" {% if filters.confidence_score == "0.95" %}selected{% endif %}>>= 0.95</option>
+            </select>
+        </label>
+        <label class="filter-search">
+            Поиск по тексту
+            <input type="text" name="q" value="{{ filters.q }}" placeholder="Текст, автор, товар, external_id">
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Применить фильтры</button>
+            <a href="/reviews/" class="secondary-button">Сбросить</a>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Отзывы и вопросы Ozon</h2>
+            <p>Воздушная таблица с липким заголовком, hover-эффектом и быстрым переходом в карточку.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Внешний ID</th>
+                    <th>SKU</th>
+                    <th>Тип</th>
+                    <th>Категория</th>
+                    <th>Оценка</th>
+                    <th>Автор</th>
+                    <th>Статус</th>
+                    <th>Автоматизация</th>
+                    <th>Уверенность</th>
+                    <th>Риск</th>
+                    <th>Черновик ответа</th>
+                    <th>Финальный ответ</th>
+                    <th>Опубликован</th>
+                    <th>Открыть</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in reviews %}
+                <tr>
+                    <td>{{ review.external_id }}</td>
+                    <td>{{ review.sku or "-" }}</td>
+                    <td>{{ source_type_map.get(review.source_type, review.source_type) }}</td>
+                    <td>{{ category_map.get(review.category, review.category or "-") }}</td>
+                    <td>{{ review.rating if review.rating is not none else "-" }}</td>
+                    <td>{{ review.author_name or "-" }}</td>
+                    <td>{{ review_status_map.get(review.status, review.status) }}</td>
+                    <td>{{ automation_map.get(review.automation_mode, review.automation_mode or "-") }}</td>
+                    <td>{{ "%.2f"|format(review.confidence_score) if review.confidence_score is not none else "-" }}</td>
+                    <td><span class="risk-badge risk-{{ review.risk_level }}">{{ risk_map.get(review.risk_level, review.risk_level or "-") }}</span></td>
+                    <td>{{ (review.draft_reply[:80] ~ "...") if review.draft_reply and review.draft_reply|length > 80 else (review.draft_reply or "-") }}</td>
+                    <td>{{ (review.final_reply[:80] ~ "...") if review.final_reply and review.final_reply|length > 80 else (review.final_reply or "-") }}</td>
+                    <td>{{ review.published_at.strftime("%Y-%m-%d %H:%M") if review.published_at else "-" }}</td>
+                    <td><a href="/reviews/{{ review.id }}" class="secondary-button">Открыть</a></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="14">По текущим фильтрам ничего не найдено.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

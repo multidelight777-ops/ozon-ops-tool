@@ -169,3 +169,22 @@ SKU-001,2026-03-20 10:00,120,fbo,1499,Priority delivery,Plan for SKU-001
 - фильтры по исполнителю и статусу
 - авторизацию
 - выгрузку отчетов
+## Отзывы Ozon
+
+В проект добавлен отдельный модуль для отзывов и вопросов Ozon.
+
+Что уже подготовлено:
+
+- SQLAlchemy-модель `Review`
+- страница `/reviews`
+- блок последних отзывов на dashboard
+- сервис `app/services/ozon_reviews_service.py`
+
+Где находится:
+
+- модель: `app/models.py`
+- маршруты: `app/routers/reviews.py`
+- шаблон страницы: `app/templates/reviews/list.html`
+- сервис-заглушка: `app/services/ozon_reviews_service.py`
+
+Пока это только структура без реальной загрузки из API. Следующим шагом сюда можно будет добавить клиент Ozon API и синхронизацию отзывов в базу.

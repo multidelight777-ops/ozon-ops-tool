@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import Task
 from app.services.logger import log_action
+from app.services.ozon_reviews_service import sync_ozon_reviews_placeholder
 from app.services.telegram_bot import send_ready_for_review_message
 from app.services.telegram_service import send_telegram_message
 
@@ -118,6 +119,29 @@ def _move_planned_tasks_to_review() -> None:
         db.close()
 
 
+def _process_ozon_reviews() -> None:
+    """
+    Every 15 minutes fetch new Ozon reviews/questions, classify them,
+    generate draft replies, auto-send safe ones, and alert on high-risk ones.
+    """
+    db: Session = SessionLocal()
+    try:
+        stats = sync_ozon_reviews_placeholder(db)
+        log_action(
+            db,
+            action="review_scheduler_sync",
+            details=(
+                "Review scheduler sync finished. "
+                f"Processed: {stats['processed']}, created: {stats['created']}, updated: {stats['updated']}, "
+                f"auto_sent: {stats['auto_sent']}, alerts_sent: {stats['alerts_sent']}, "
+                f"skipped: {stats['skipped']}, errors: {stats['errors']}."
+            ),
+        )
+        logger.info("Review scheduler sync stats: %s", stats)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     """Start the background scheduler once on application startup."""
     if scheduler.running:
@@ -135,6 +159,13 @@ def start_scheduler() -> None:
         "interval",
         minutes=5,
         id="planned_to_ready_for_review",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _process_ozon_reviews,
+        "interval",
+        minutes=15,
+        id="ozon_reviews_scheduler",
         replace_existing=True,
     )
     scheduler.start()

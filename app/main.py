@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import dashboard, tasks
+from app.routers import dashboard, reviews, tasks
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.telegram_bot import start_telegram_bot, stop_telegram_bot
 
@@ -26,3 +26,4 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
+app.include_router(reviews.router)

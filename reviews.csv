@@ -1,0 +1,4 @@
+external_id,sku,source_type,rating,author_name,text,published_at
+r1,MD-500,review,5,Анна,Отличный товар,2026-03-17 10:00:00
+r2,MD-500,review,2,Ирина,Пришел с дефектом,2026-03-17 10:05:00
+q1,MD-400,question,,Олег,Подходит ли для чувствительной кожи?,2026-03-17 10:10:00

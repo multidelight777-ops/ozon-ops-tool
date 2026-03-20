@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -38,3 +38,33 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(120), nullable=False)
     details: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Review(Base):
+    """Ozon review/question entity with moderation and reply workflow fields."""
+
+    __tablename__ = "reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), default="", index=True)
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(50), default="review")
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="new")
+    draft_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    final_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    automation_mode: Mapped[str] = mapped_column(String(50), default="review_required")
+    processing_mode: Mapped[str] = mapped_column(String(50), default="требуется_проверка")
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_level: Mapped[str] = mapped_column(String(50), default="medium")
+    send_status: Mapped[str] = mapped_column(String(50), default="pending")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_automation_processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    high_risk_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

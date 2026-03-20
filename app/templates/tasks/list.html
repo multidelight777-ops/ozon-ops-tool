@@ -1,96 +1,129 @@
 {% extends "base.html" %}
 
+{% set task_status_map = {
+    "new": "Новая",
+    "in_progress": "В работе",
+    "done": "Выполнено",
+    "planned": "Запланировано",
+    "ready_for_review": "Готово к проверке",
+    "approved": "Подтверждено"
+} %}
+
 {% block content %}
+<section class="page-header">
+    <div>
+        <h2>Задачи</h2>
+        <p>Операционная база задач в едином стиле: чистые формы, понятные подписи и аккуратные таблицы.</p>
+    </div>
+</section>
+
 <section class="grid two-columns">
     <div class="card">
-        <h2>Create task</h2>
+        <div class="section-head">
+            <div>
+                <h2>Создать задачу</h2>
+                <p>Создание новой задачи для ручной работы команды.</p>
+            </div>
+        </div>
         <form method="post" action="/tasks/create" class="stack">
             <label>
-                Title
+                Название
                 <input type="text" name="title" required>
             </label>
             <label>
-                Description
+                Описание
                 <textarea name="description" rows="4"></textarea>
             </label>
             <label>
-                Assignee
+                Ответственный
                 <input type="text" name="assignee">
             </label>
             <label>
-                Due date
+                Срок
                 <input type="datetime-local" name="due_date">
             </label>
             <label>
                 Telegram chat ID
-                <input type="text" name="telegram_chat_id" placeholder="Optional">
+                <input type="text" name="telegram_chat_id" placeholder="Необязательно">
             </label>
-            <button type="submit">Create task</button>
+            <button type="submit">Создать задачу</button>
         </form>
     </div>
 
     <div class="card">
-        <h2>Import CSV</h2>
-        <p>Columns: <code>title, description, assignee, due_date, telegram_chat_id</code></p>
-        <p>Date formats: <code>YYYY-MM-DD</code> or <code>YYYY-MM-DD HH:MM</code></p>
+        <div class="section-head">
+            <div>
+                <h2>Импорт CSV</h2>
+                <p>Быстрый импорт файла с задачами в базу.</p>
+            </div>
+        </div>
+        <p>Колонки: <code>title, description, assignee, due_date, telegram_chat_id</code></p>
+        <p>Форматы даты: <code>YYYY-MM-DD</code> или <code>YYYY-MM-DD HH:MM</code></p>
         <form method="post" action="/tasks/import" enctype="multipart/form-data" class="stack">
             <input type="file" name="file" accept=".csv" required>
-            <button type="submit">Import file</button>
+            <button type="submit">Импортировать файл</button>
         </form>
     </div>
 </section>
 
 <section class="card">
-    <h2>Task database</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>SKU</th>
-                <th>Title</th>
-                <th>Assignee</th>
-                <th>Status</th>
-                <th>Planned date</th>
-                <th>Quantity</th>
-                <th>Delivery</th>
-                <th>Planned price</th>
-                <th>Telegram</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for task in tasks %}
-            <tr>
-                <td>{{ task.id }}</td>
-                <td>{{ task.sku or "-" }}</td>
-                <td>
-                    <strong>{{ task.title }}</strong><br>
-                    <small>{{ task.comment or task.description or "-" }}</small>
-                </td>
-                <td>{{ task.assignee or "-" }}</td>
-                <td>{{ task.status }}</td>
-                <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
-                <td>{{ task.quantity }}</td>
-                <td>{{ task.delivery_type or "-" }}</td>
-                <td>{{ task.planned_price or "-" }}</td>
-                <td>{{ task.telegram_chat_id or "-" }}</td>
-                <td>
-                    <form method="post" action="/tasks/{{ task.id }}/status" class="inline-form">
-                        <select name="status">
-                            <option value="new" {% if task.status == "new" %}selected{% endif %}>new</option>
-                            <option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>in_progress</option>
-                            <option value="done" {% if task.status == "done" %}selected{% endif %}>done</option>
-                        </select>
-                        <button type="submit">Save</button>
-                    </form>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="10">No tasks yet. Create one or import CSV.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="section-head">
+        <div>
+            <h2>База задач</h2>
+            <p>Текущие задачи с более воздушной таблицей и мягким hover-эффектом.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>SKU</th>
+                    <th>Название</th>
+                    <th>Ответственный</th>
+                    <th>Статус</th>
+                    <th>Плановая дата</th>
+                    <th>Количество</th>
+                    <th>Доставка</th>
+                    <th>Плановая цена</th>
+                    <th>Telegram</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in tasks %}
+                <tr>
+                    <td>{{ task.id }}</td>
+                    <td>{{ task.sku or "-" }}</td>
+                    <td>
+                        <strong>{{ task.title }}</strong><br>
+                        <small>{{ task.comment or task.description or "-" }}</small>
+                    </td>
+                    <td>{{ task.assignee or "-" }}</td>
+                    <td>{{ task_status_map.get(task.status, task.status) }}</td>
+                    <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
+                    <td>{{ task.quantity }}</td>
+                    <td>{{ task.delivery_type or "-" }}</td>
+                    <td>{{ task.planned_price or "-" }}</td>
+                    <td>{{ task.telegram_chat_id or "-" }}</td>
+                    <td>
+                        <form method="post" action="/tasks/{{ task.id }}/status" class="inline-form">
+                            <select name="status">
+                                <option value="new" {% if task.status == "new" %}selected{% endif %}>Новая</option>
+                                <option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>В работе</option>
+                                <option value="done" {% if task.status == "done" %}selected{% endif %}>Выполнено</option>
+                            </select>
+                            <button type="submit">Сохранить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11">Задач пока нет. Создайте новую или импортируйте CSV.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </section>
 {% endblock %}

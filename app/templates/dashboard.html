@@ -1,99 +1,217 @@
 {% extends "base.html" %}
 
+{% set task_status_map = {
+    "planned": "Запланировано",
+    "ready_for_review": "Готово к проверке",
+    "approved": "Подтверждено",
+    "done": "Выполнено",
+    "new": "Новая",
+    "in_progress": "В работе"
+} %}
+{% set review_status_map = {
+    "new": "Новый",
+    "drafted": "Черновик",
+    "approved": "Одобрен",
+    "sent": "Отправлен",
+    "failed": "Ошибка",
+    "archived": "Архив",
+    "одобрен": "Одобрен",
+    "отправлен": "Отправлен",
+    "ошибка": "Ошибка",
+    "архив": "Архив",
+    "ручная_обработка": "Ручная обработка"
+} %}
+{% set source_type_map = {
+    "review": "Отзыв",
+    "question": "Вопрос"
+} %}
+
 {% block content %}
+<section class="page-header">
+    <div>
+        <h2>Главная</h2>
+        <p>Единая обзорная панель по задачам, отзывам, интеграциям и последним действиям команды.</p>
+    </div>
+</section>
+
 {% if message %}
 <section class="card notice">
     <strong>{{ message }}</strong>
 </section>
 {% endif %}
 
-<section class="grid two-columns three-cards">
-    <div class="card stat">
-        <h2>Total tasks</h2>
-        <strong>{{ stats.total_tasks }}</strong>
+<section class="grid four-cards">
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Всего задач</p>
+                <div class="metric-value">{{ stats.total_tasks }}</div>
+                <p class="metric-foot">Все записи в операционной базе</p>
+            </div>
+            <span class="metric-icon">▣</span>
+        </div>
     </div>
-    <div class="card stat">
-        <h2>Open tasks</h2>
-        <strong>{{ stats.open_tasks }}</strong>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Открытые задачи</p>
+                <div class="metric-value">{{ stats.open_tasks }}</div>
+                <p class="metric-foot">Требуют внимания команды</p>
+            </div>
+            <span class="metric-icon">◔</span>
+        </div>
     </div>
-    <div class="card stat">
-        <h2>Done tasks</h2>
-        <strong>{{ stats.done_tasks }}</strong>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Выполнено</p>
+                <div class="metric-value">{{ stats.done_tasks }}</div>
+                <p class="metric-foot">Закрытые задачи за всё время</p>
+            </div>
+            <span class="metric-icon">✓</span>
+        </div>
     </div>
-</section>
-
-<section class="card">
-    <h2>Plans Import</h2>
-    <p>The button reads <code>plans.csv</code> directly from the project root and updates tasks by <code>sku + planned_date</code>.</p>
-    <form method="post" action="/tasks/import-plans" class="stack">
-        <button type="submit">Import CSV</button>
-    </form>
-</section>
-
-<section class="card">
-    <h2>Telegram Test</h2>
-    <p>Sends <code>TEST OK</code> using <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code>.</p>
-    <form method="post" action="/telegram/test" class="stack">
-        <button type="submit">Send test Telegram message</button>
-    </form>
-</section>
-
-<section class="card">
-    <h2>Status Overview</h2>
-    <div class="status-list">
-        <span class="status-badge status-planned">planned</span>
-        <span class="status-badge status-ready_for_review">ready_for_review</span>
-        <span class="status-badge status-approved">approved</span>
-        <span class="status-badge status-done">done</span>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Отзывы Ozon</p>
+                <div class="metric-value">{{ stats.total_reviews }}</div>
+                <p class="metric-foot">Отзывы и вопросы в локальной базе</p>
+            </div>
+            <span class="metric-icon">✦</span>
+        </div>
     </div>
 </section>
 
 <section class="grid two-columns">
     <div class="card">
-        <h2>Recent tasks</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>SKU</th>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th>Planned date</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for task in recent_tasks %}
-                <tr>
-                    <td>{{ task.id }}</td>
-                    <td>{{ task.sku or "-" }}</td>
-                    <td>{{ task.title }}</td>
-                    <td>
-                        <span class="status-badge status-{{ task.status }}">{{ task.status }}</span>
-                    </td>
-                    <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="5">No tasks yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="section-head">
+            <div>
+                <h2>Импорт и интеграции</h2>
+                <p>Быстрые действия для загрузки данных и проверки подключений.</p>
+            </div>
+        </div>
+        <div class="panel-actions">
+            <form method="post" action="/tasks/import-plans">
+                <button type="submit">Импортировать планы CSV</button>
+            </form>
+            <form method="post" action="/telegram/test">
+                <button type="submit">Отправить тест в Telegram</button>
+            </form>
+            <form method="post" action="/ozon/test">
+                <button type="submit">Проверить настройки Ozon API</button>
+            </form>
+            <a href="/reviews/load" class="secondary-button">Загрузить отзывы из Ozon</a>
+        </div>
     </div>
 
     <div class="card">
-        <h2>Action log</h2>
-        <ul class="log-list">
-            {% for item in recent_logs %}
-            <li>
-                <strong>{{ item.action }}</strong>
-                <span>{{ item.details }}</span>
-                <small>{{ item.created_at.strftime("%Y-%m-%d %H:%M") }}</small>
-            </li>
-            {% else %}
-            <li>No actions yet.</li>
-            {% endfor %}
-        </ul>
+        <div class="section-head">
+            <div>
+                <h2>Статусы задач</h2>
+                <p>Быстрый визуальный обзор ключевых этапов обработки.</p>
+            </div>
+        </div>
+        <div class="status-list">
+            <span class="status-badge status-planned">Запланировано</span>
+            <span class="status-badge status-ready_for_review">Готово к проверке</span>
+            <span class="status-badge status-approved">Подтверждено</span>
+            <span class="status-badge status-done">Выполнено</span>
+        </div>
     </div>
+</section>
+
+<section class="grid two-columns">
+    <div class="card">
+        <div class="section-head">
+            <div>
+                <h2>Последние задачи</h2>
+                <p>Актуальные записи с плановой датой и текущим статусом.</p>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>SKU</th>
+                        <th>Название</th>
+                        <th>Статус</th>
+                        <th>Плановая дата</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in recent_tasks %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.sku or "-" }}</td>
+                        <td>{{ task.title }}</td>
+                        <td><span class="status-badge status-{{ task.status }}">{{ task_status_map.get(task.status, task.status) }}</span></td>
+                        <td>{{ (task.planned_date or task.due_date).strftime("%Y-%m-%d %H:%M") if (task.planned_date or task.due_date) else "-" }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5">Задач пока нет.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-head">
+            <div>
+                <h2>Последние отзывы Ozon</h2>
+                <p>Новые отзывы и вопросы с кратким статусом обработки.</p>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>SKU</th>
+                        <th>Тип</th>
+                        <th>Статус</th>
+                        <th>Автор</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for review in recent_reviews %}
+                    <tr>
+                        <td>{{ review.sku or "-" }}</td>
+                        <td>{{ source_type_map.get(review.source_type, review.source_type) }}</td>
+                        <td>{{ review_status_map.get(review.status, review.status) }}</td>
+                        <td>{{ review.author_name or "-" }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">Отзывов пока нет.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Журнал действий</h2>
+            <p>Последние события по импорту, отправке и автоматизации.</p>
+        </div>
+    </div>
+    <ul class="log-list">
+        {% for item in recent_logs %}
+        <li>
+            <strong>{{ item.action }}</strong>
+            <span>{{ item.details }}</span>
+            <small>{{ item.created_at.strftime("%Y-%m-%d %H:%M") }}</small>
+        </li>
+        {% else %}
+        <li>Событий пока нет.</li>
+        {% endfor %}
+    </ul>
 </section>
 {% endblock %}
