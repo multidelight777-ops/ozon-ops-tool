@@ -1,21 +1,34 @@
 from contextlib import asynccontextmanager
+import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.config import settings
-from app.database import Base, engine
-from app.routers import dashboard, reviews, tasks
+from app.config import BASE_DIR, ENV_FILE_PATH, env_presence_map, settings
+from app.database import Base, DATABASE_URL, engine
+from app.routers import dashboard, discount_requests, price_monitor, reviews, tasks
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.telegram_bot import start_telegram_bot, stop_telegram_bot
+
+
+logger = logging.getLogger("app.main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB and background jobs on startup."""
+    logger.info(
+        "Старт приложения. cwd=%s base_dir=%s env_file=%s env_exists=%s database_url=%s",
+        os.getcwd(),
+        BASE_DIR,
+        ENV_FILE_PATH,
+        ENV_FILE_PATH.exists(),
+        DATABASE_URL,
+    )
+    logger.info("Диагностика env-переменных: %s", env_presence_map())
     Base.metadata.create_all(bind=engine)
     start_telegram_bot()
-    start_scheduler()
     yield
     stop_scheduler()
     stop_telegram_bot()
@@ -27,3 +40,11 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(dashboard.router)
 app.include_router(tasks.router)
 app.include_router(reviews.router)
+app.include_router(discount_requests.router)
+app.include_router(price_monitor.router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
+    logger.info("Scheduler запущен")

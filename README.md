@@ -188,3 +188,23 @@ SKU-001,2026-03-20 10:00,120,fbo,1499,Priority delivery,Plan for SKU-001
 - сервис-заглушка: `app/services/ozon_reviews_service.py`
 
 Пока это только структура без реальной загрузки из API. Следующим шагом сюда можно будет добавить клиент Ozon API и синхронизацию отзывов в базу.
+## Заявки на скидку
+
+В проект добавлен новый модуль для заявок на скидку Ozon.
+
+Что уже подготовлено:
+
+- SQLAlchemy-модель `DiscountRequest`
+- страница `/discount-requests`
+- шаблон списка заявок
+- сервис `app/services/ozon_discount_requests_service.py`
+- ссылка в верхнем меню
+
+Где находится:
+
+- модель: `app/models.py`
+- маршруты: `app/routers/discount_requests.py`
+- шаблон страницы: `app/templates/discount_requests/list.html`
+- сервис: `app/services/ozon_discount_requests_service.py`
+
+Пока это базовый каркас без реальной синхронизации с Ozon API. Следующим шагом сюда можно добавить загрузку заявок, изменение статусов и действия по согласованию.

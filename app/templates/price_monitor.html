@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>Мониторинг цен (витрина)</h2>
+        <p>Раздел для сохранения карточек товаров и ручной проверки витринных цен Ozon.</p>
+    </div>
+    <a href="#add-product-form" class="secondary-button">Добавить товар</a>
+</section>
+
+{% if message %}
+<section class="card notice">
+    <strong>{{ message }}</strong>
+</section>
+{% endif %}
+
+<section class="card" id="add-product-form">
+    <div class="section-head">
+        <div>
+            <h2>Добавить товар</h2>
+            <p>Заполните SKU, название товара и ссылку на витрину Ozon.</p>
+        </div>
+    </div>
+    <form method="post" action="/price-monitor/add" class="reviews-filter-grid">
+        <label>
+            SKU
+            <input type="text" name="sku" placeholder="Например, MD-001" required>
+        </label>
+        <label>
+            Название товара
+            <input type="text" name="product_name" placeholder="Название товара" required>
+        </label>
+        <label>
+            URL
+            <input type="url" name="url" placeholder="https://www.ozon.ru/..." required>
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Сохранить</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Список товаров</h2>
+            <p>Последние найденные цены берутся из таблицы мониторинга и показываются рядом с товаром.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Название</th>
+                    <th>Цена с СПП</th>
+                    <th>Цена без СПП</th>
+                    <th>Разница</th>
+                    <th>Последняя проверка</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>{{ row.product.sku }}</td>
+                    <td>{{ row.product.product_name }}</td>
+                    <td>{{ row.price_with_spp if row.price_with_spp is not none else "-" }}</td>
+                    <td>{{ row.price_without_spp if row.price_without_spp is not none else "-" }}</td>
+                    <td>{{ row.difference if row.difference is not none else "-" }}</td>
+                    <td>{{ row.checked_at if row.checked_at else "-" }}</td>
+                    <td>
+                        <div class="actions-row">
+                            <a href="/price-monitor/{{ row.product.id }}/chart" class="secondary-button">График</a>
+                            <form method="post" action="/price-monitor/{{ row.product.id }}/refresh">
+                                <button type="submit">Обновить цены</button>
+                            </form>
+                            <form method="post" action="/price-monitor/{{ row.product.id }}/delete">
+                                <button type="submit" class="danger-button">Удалить товар</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">Пока нет товаров для мониторинга.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

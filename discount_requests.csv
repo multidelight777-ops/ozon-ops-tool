@@ -1,0 +1,3 @@
+external_id,sku,product_name,current_price,requested_discount_percent,requested_price,buyer_comment,created_at
+d1,123456,Дарсонваль,5000,5,4750,Хочу скидку,2026-03-21 10:00:00
+d2,987654,Массажер,3000,5,2850,,2026-03-21 10:05:00

@@ -68,3 +68,52 @@ class Review(Base):
     high_risk_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DiscountRequest(Base):
+    """Заявка на скидку Ozon для внутренней панели и будущей интеграции."""
+
+    __tablename__ = "discount_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, default="")
+    sku: Mapped[str] = mapped_column(String(100), index=True, default="")
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    requested_discount_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    requested_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approved_discount_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approved_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    buyer_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="новая")
+    send_status: Mapped[str] = mapped_column(String(50), default="ожидает")
+    ozon_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PriceMonitor(Base):
+    """Результат проверки витринной цены товара."""
+
+    __tablename__ = "price_monitors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[str] = mapped_column(String(100), default="", index=True)
+    url: Mapped[str] = mapped_column(String(500), default="")
+    price_with_spp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_without_spp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MonitoredProduct(Base):
+    """Товар, который мы отслеживаем на витрине Ozon."""
+
+    __tablename__ = "monitored_products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[str] = mapped_column(String(100), default="", index=True)
+    product_name: Mapped[str] = mapped_column(String(255), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

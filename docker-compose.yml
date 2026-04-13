@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    restart: always
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+    ports:
+      - "8000:8000"

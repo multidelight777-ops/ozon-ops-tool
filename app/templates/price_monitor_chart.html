@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>График истории цен</h2>
+        <p>{{ product.product_name }} • SKU: {{ product.sku }}</p>
+    </div>
+    <a href="/price-monitor/" class="secondary-button">Назад к мониторингу</a>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>{{ product.product_name }}</h2>
+            <p>История цен по товару с двумя линиями: с СПП и без СПП.</p>
+        </div>
+    </div>
+    <canvas id="priceHistoryChart" height="120"></canvas>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const chartLabels = {{ chart_labels | tojson }};
+    const chartPriceWithSpp = {{ chart_price_with_spp | tojson }};
+    const chartPriceWithoutSpp = {{ chart_price_without_spp | tojson }};
+
+    const ctx = document.getElementById("priceHistoryChart");
+
+    new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: chartLabels,
+            datasets: [
+                {
+                    label: "Цена с СПП",
+                    data: chartPriceWithSpp,
+                    borderColor: "#22C55E",
+                    backgroundColor: "rgba(34, 197, 94, 0.15)",
+                    tension: 0.25,
+                    spanGaps: true
+                },
+                {
+                    label: "Цена без СПП",
+                    data: chartPriceWithoutSpp,
+                    borderColor: "#64748B",
+                    backgroundColor: "rgba(100, 116, 139, 0.12)",
+                    tension: 0.25,
+                    spanGaps: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: "index",
+                intersect: false
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value + " ₽";
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

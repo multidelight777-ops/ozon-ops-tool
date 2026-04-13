@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% set discount_status_map = {
+    "новая": "Новая",
+    "рассчитана": "Рассчитана",
+    "одобрена": "Одобрена",
+    "отправлена": "Отправлена",
+    "ошибка": "Ошибка",
+    "архив": "Архив"
+} %}
+{% set send_status_map = {
+    "ожидает": "Ожидает",
+    "успешно": "Успешно",
+    "ошибка": "Ошибка"
+} %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>Карточка заявки на скидку</h2>
+        <p>Детальная информация по одной заявке на скидку Ozon.</p>
+    </div>
+    <a href="/discount-requests/" class="secondary-button">Назад к списку</a>
+</section>
+
+{% if message %}
+<section class="card notice">
+    <strong>{{ message }}</strong>
+</section>
+{% endif %}
+
+<section class="grid two-columns">
+    <div class="card">
+        <h2>Основные данные</h2>
+        <dl class="detail-grid">
+            <dt>SKU</dt>
+            <dd>{{ discount_request.sku or "-" }}</dd>
+            <dt>Название товара</dt>
+            <dd>{{ discount_request.product_name or "-" }}</dd>
+            <dt>Текущая цена</dt>
+            <dd>{{ discount_request.current_price if discount_request.current_price is not none else "-" }}</dd>
+            <dt>Запрошенная скидка</dt>
+            <dd>{{ discount_request.requested_discount_percent if discount_request.requested_discount_percent is not none else "-" }}</dd>
+            <dt>Запрошенная цена</dt>
+            <dd>{{ discount_request.requested_price if discount_request.requested_price is not none else "-" }}</dd>
+            <dt>Внешний ID</dt>
+            <dd>{{ discount_request.external_id or "-" }}</dd>
+        </dl>
+    </div>
+
+    <div class="card">
+        <h2>Результат обработки</h2>
+        <dl class="detail-grid">
+            <dt>Одобренная скидка</dt>
+            <dd>{{ discount_request.approved_discount_percent if discount_request.approved_discount_percent is not none else "-" }}</dd>
+            <dt>Одобренная цена</dt>
+            <dd>{{ discount_request.approved_price if discount_request.approved_price is not none else "-" }}</dd>
+            <dt>Статус</dt>
+            <dd>{{ discount_status_map.get(discount_request.status, discount_request.status) }}</dd>
+            <dt>Статус отправки</dt>
+            <dd>{{ send_status_map.get(discount_request.send_status, discount_request.send_status) }}</dd>
+            <dt>Ответ Ozon</dt>
+            <dd>{{ discount_request.ozon_response or "-" }}</dd>
+        </dl>
+    </div>
+</section>
+
+<section class="grid two-columns">
+    <div class="card">
+        <h2>Комментарий покупателя</h2>
+        <div class="content-box">{{ discount_request.buyer_comment or "-" }}</div>
+    </div>
+
+    <div class="card">
+        <h2>Даты</h2>
+        <dl class="detail-grid">
+            <dt>Создано</dt>
+            <dd>{{ discount_request.created_at.strftime("%Y-%m-%d %H:%M") if discount_request.created_at else "-" }}</dd>
+            <dt>Обработано</dt>
+            <dd>{{ discount_request.processed_at.strftime("%Y-%m-%d %H:%M") if discount_request.processed_at else "-" }}</dd>
+            <dt>Обновлено</dt>
+            <dd>{{ discount_request.updated_at.strftime("%Y-%m-%d %H:%M") if discount_request.updated_at else "-" }}</dd>
+        </dl>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Действия</h2>
+            <p>Workflow для расчёта, одобрения, отправки и архивации заявки.</p>
+        </div>
+    </div>
+    <div class="actions-row">
+        <form method="post" action="/discount-requests/{{ discount_request.id }}/calculate">
+            <button type="submit">Рассчитать 3%</button>
+        </form>
+        <form method="post" action="/discount-requests/{{ discount_request.id }}/approve">
+            <button type="submit">Одобрить</button>
+        </form>
+        <form method="post" action="/discount-requests/{{ discount_request.id }}/send">
+            <button type="submit">Отправить в Ozon</button>
+        </form>
+        <form method="post" action="/discount-requests/{{ discount_request.id }}/archive">
+            <button type="submit" class="danger-button">В архив</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

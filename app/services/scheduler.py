@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import logging
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -9,11 +9,12 @@ from app.database import SessionLocal
 from app.models import Task
 from app.services.logger import log_action
 from app.services.ozon_reviews_service import sync_ozon_reviews_placeholder
+from app.services.price_monitor_service import refresh_all_prices
 from app.services.telegram_bot import send_ready_for_review_message
 from app.services.telegram_service import send_telegram_message
 
 
-scheduler = BackgroundScheduler()
+scheduler = AsyncIOScheduler()
 logger = logging.getLogger("app.scheduler")
 
 
@@ -142,8 +143,20 @@ def _process_ozon_reviews() -> None:
         db.close()
 
 
+async def run_price_monitor_job() -> None:
+    """Каждый час обновлять цены витрины для всех товаров мониторинга."""
+    logger.info("Запуск автообновления цен витрины")
+    stats = await refresh_all_prices()
+    logger.info(
+        "Автообновление завершено. updated=%s, errors=%s, duration_seconds=%s",
+        stats.get("updated"),
+        stats.get("errors"),
+        stats.get("duration_seconds"),
+    )
+
+
 def start_scheduler() -> None:
-    """Start the background scheduler once on application startup."""
+    """Start the scheduler once on application startup."""
     if scheduler.running:
         return
 
@@ -166,6 +179,13 @@ def start_scheduler() -> None:
         "interval",
         minutes=15,
         id="ozon_reviews_scheduler",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_price_monitor_job,
+        "interval",
+        hours=1,
+        id="price_monitor_job",
         replace_existing=True,
     )
     scheduler.start()

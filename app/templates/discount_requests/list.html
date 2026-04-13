@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% set discount_status_map = {
+    "новая": "Новая",
+    "рассчитана": "Рассчитана",
+    "одобрена": "Одобрена",
+    "отправлена": "Отправлена",
+    "ошибка": "Ошибка",
+    "архив": "Архив"
+} %}
+{% set send_status_map = {
+    "ожидает": "Ожидает",
+    "успешно": "Успешно",
+    "ошибка": "Ошибка"
+} %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h2>Заявки на скидку</h2>
+        <p>Простой модуль для просмотра и обработки заявок на скидку Ozon внутри команды.</p>
+    </div>
+</section>
+
+{% if request.query_params.get("message") %}
+<section class="card notice">
+    <strong>{{ request.query_params.get("message") }}</strong>
+</section>
+{% endif %}
+
+<section class="grid four-cards">
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Всего заявок</p>
+                <div class="metric-value">{{ summary.total }}</div>
+                <p class="metric-foot">Все записи в локальной базе</p>
+            </div>
+            <span class="metric-icon">%</span>
+        </div>
+    </div>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Новые</p>
+                <div class="metric-value">{{ summary.pending }}</div>
+                <p class="metric-foot">Ожидают обработки</p>
+            </div>
+            <span class="metric-icon">◔</span>
+        </div>
+    </div>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Обработанные</p>
+                <div class="metric-value">{{ summary.processed }}</div>
+                <p class="metric-foot">Рассчитанные, одобренные или отправленные заявки</p>
+            </div>
+            <span class="metric-icon">✓</span>
+        </div>
+    </div>
+    <div class="card metric-card">
+        <div class="metric-top">
+            <div>
+                <p class="metric-label">Ошибки отправки</p>
+                <div class="metric-value">{{ summary.errors }}</div>
+                <p class="metric-foot">Требуют ручной проверки</p>
+            </div>
+            <span class="metric-icon">!</span>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Импорт и загрузка</h2>
+            <p>Можно импортировать локальный CSV, проверить настройки Ozon API и загрузить заявки напрямую из Ozon.</p>
+        </div>
+    </div>
+    <div class="panel-actions">
+        <form method="post" action="/discount-requests/import">
+            <button type="submit">Импорт CSV заявок</button>
+        </form>
+        <form method="post" action="/discount-requests/test-api">
+            <button type="submit" class="secondary-button">Проверить Ozon API</button>
+        </form>
+        <a href="/discount-requests/load" class="secondary-button">Загрузить заявки из Ozon</a>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Фильтры</h2>
+            <p>Отбирайте заявки по SKU, статусу и статусу отправки.</p>
+        </div>
+    </div>
+    <form method="get" action="/discount-requests/" class="reviews-filter-grid">
+        <label>
+            SKU
+            <input type="text" name="sku" value="{{ filters.sku }}" placeholder="SKU">
+        </label>
+        <label>
+            Статус
+            <select name="status">
+                <option value="">Все</option>
+                {% for option in status_options %}
+                <option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ discount_status_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Статус отправки
+            <select name="send_status">
+                <option value="">Все</option>
+                {% for option in send_status_options %}
+                <option value="{{ option }}" {% if filters.send_status == option %}selected{% endif %}>{{ send_status_map.get(option, option) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Применить фильтры</button>
+            <a href="/discount-requests/" class="secondary-button">Сбросить</a>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>Список заявок</h2>
+            <p>Базовая таблица для загрузки из Ozon API и дальнейшей ручной обработки внутри команды.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>External ID</th>
+                    <th>SKU</th>
+                    <th>Название товара</th>
+                    <th>Текущая цена</th>
+                    <th>Запрошенная скидка %</th>
+                    <th>Запрошенная цена</th>
+                    <th>Одобренная скидка %</th>
+                    <th>Одобренная цена</th>
+                    <th>Статус</th>
+                    <th>Статус отправки</th>
+                    <th>Дата</th>
+                    <th>Открыть</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in discount_requests %}
+                <tr>
+                    <td>{{ item.external_id or "-" }}</td>
+                    <td>{{ item.sku or "-" }}</td>
+                    <td>{{ item.product_name or "-" }}</td>
+                    <td>{{ item.current_price if item.current_price is not none else "-" }}</td>
+                    <td>{{ item.requested_discount_percent if item.requested_discount_percent is not none else "-" }}</td>
+                    <td>{{ item.requested_price if item.requested_price is not none else "-" }}</td>
+                    <td>{{ item.approved_discount_percent if item.approved_discount_percent is not none else "-" }}</td>
+                    <td>{{ item.approved_price if item.approved_price is not none else "-" }}</td>
+                    <td>{{ discount_status_map.get(item.status, item.status) }}</td>
+                    <td>{{ send_status_map.get(item.send_status, item.send_status) }}</td>
+                    <td>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "-" }}</td>
+                    <td><a href="/discount-requests/{{ item.id }}" class="secondary-button">Открыть</a></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="12">Заявок на скидку пока нет.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
