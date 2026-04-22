@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    shm_size: 1gb
     working_dir: /app
     restart: always
     env_file:

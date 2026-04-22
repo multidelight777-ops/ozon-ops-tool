@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ DEFAULT_TIMEOUT_MS = 30000
 PLAYWRIGHT_BROWSER_ENGINE = "chromium"
 DEFAULT_BROWSER_ARGS = [
     "--no-sandbox",
+    "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
     "--disable-blink-features=AutomationControlled",
@@ -73,7 +75,16 @@ class OzonPriceMonitor:
             playwright_version = self._get_playwright_version()
             headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
             headless = self._normalize_headless(headless_env_value)
-            launch_options = {"headless": headless, "args": self.browser_args}
+            launch_options = {
+                "headless": headless,
+                "args": [
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            }
 
             logger.info("PRICE_MONITOR_HEADLESS=%s", headless_env_value)
             logger.info("Playwright headless=%s", headless)
@@ -83,7 +94,16 @@ class OzonPriceMonitor:
 
             async with async_playwright() as playwright:
                 logger.info("Chromium executable path=%s", playwright.chromium.executable_path)
-                browser = await playwright.chromium.launch(**launch_options)
+                browser = None
+                for attempt in range(2):
+                    try:
+                        browser = await playwright.chromium.launch(**launch_options)
+                        break
+                    except Exception as exc:
+                        logger.warning("Ошибка запуска Chromium, попытка=%s error=%s", attempt + 1, exc)
+                        if attempt == 1:
+                            raise exc
+                        await asyncio.sleep(2)
                 context = await browser.new_context(
                     user_agent=(
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
