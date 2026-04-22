@@ -19,19 +19,21 @@ logger = logging.getLogger("app.ozon_price_monitor")
 
 
 DEFAULT_TIMEOUT_MS = 30000
-DEFAULT_WAIT_AFTER_LOAD_MS = 5000
-DEFAULT_WAIT_AFTER_SCROLL_MS = 2000
 PLAYWRIGHT_BROWSER_ENGINE = "chromium"
-DEFAULT_BROWSER_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+DEFAULT_BROWSER_ARGS = [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-blink-features=AutomationControlled",
+]
 DEBUG_HTML_DIR = Path(BASE_DIR) / "app" / "data" / "debug"
 
 PRICE_WITH_SPP_SELECTORS = [
-    "span.tsHeadline600Large",
-    "[data-widget='webPrice'] span",
     "[data-widget='webPrice']",
+    "[data-widget='webPrice'] span",
+    "span:has-text('₽')",
 ]
 PRICE_WITHOUT_SPP_SELECTORS = [
-    "span.pdp_i4b.tsHeadline500Medium",
     "span:has-text('без Ozon Банка')",
     "div:has-text('без Ozon Банка') span",
 ]
@@ -39,7 +41,13 @@ GENERIC_PRICE_SELECTORS = [
     "span:has-text('₽')",
     "div:has-text('₽')",
 ]
-NEGATIVE_PAGE_MARKERS = ["captcha", "доступ ограничен", "403", "temporarily unavailable"]
+NEGATIVE_PAGE_MARKERS = [
+    "captcha",
+    "доступ ограничен",
+    "403",
+    "temporarily unavailable",
+    "cloudflare",
+]
 
 
 class OzonPriceMonitor:
@@ -63,7 +71,7 @@ class OzonPriceMonitor:
 
         try:
             playwright_version = self._get_playwright_version()
-            headless_env_value = settings.PRICE_MONITOR_HEADLESS
+            headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
             headless = self._normalize_headless(headless_env_value)
             launch_options = {"headless": headless, "args": self.browser_args}
 
@@ -85,17 +93,26 @@ class OzonPriceMonitor:
                     viewport={"width": 1280, "height": 800},
                     locale="ru-RU",
                 )
+                await context.add_init_script(
+                    """
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    })
+                    """
+                )
+
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout_ms)
 
                 await self._open_product_page(page, url)
-                await page.wait_for_timeout(5000)
 
                 page_title = await page.title()
                 final_url = page.url
+                await page.screenshot(path="app/data/debug/debug.png")
+
                 html = await page.content()
-                with open("app/data/debug/last_page.html", "w", encoding="utf-8") as f:
-                    f.write(html)
+                with open("app/data/debug/last_page.html", "w", encoding="utf-8") as file:
+                    file.write(html)
                 print("HTML SAVED")
 
                 contains_ruble = "₽" in html or "₽" in page_title
@@ -117,8 +134,8 @@ class OzonPriceMonitor:
                         page_title,
                         html[:1000],
                     )
-                    with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as f:
-                        f.write(html)
+                    with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
+                        file.write(html)
                     return {
                         "price_with_spp": None,
                         "price_without_spp": None,
@@ -135,7 +152,6 @@ class OzonPriceMonitor:
 
                 price_with_spp = self._clean_price(price_with_spp_text)
                 price_without_spp = self._clean_price(price_without_spp_text)
-                price = price_with_spp or price_without_spp
 
                 logger.info(
                     "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
@@ -148,10 +164,10 @@ class OzonPriceMonitor:
                     price_without_spp,
                 )
 
-                if not price:
+                if price_with_spp is None and price_without_spp is None:
                     print("PRICE NOT FOUND")
-                    with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as f:
-                        f.write(html)
+                    with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
+                        file.write(html)
                     logger.warning(
                         "Цена не найдена: url=%s, final_url=%s, title=%s",
                         url,
@@ -170,8 +186,8 @@ class OzonPriceMonitor:
         except PlaywrightTimeoutError:
             logger.exception("Таймаут при мониторинге цены Ozon: url=%s", url)
             if html:
-                with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as f:
-                    f.write(html)
+                with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
+                    file.write(html)
             return {
                 "price_with_spp": None,
                 "price_without_spp": None,
@@ -179,8 +195,8 @@ class OzonPriceMonitor:
         except Exception:
             logger.exception("Ошибка мониторинга цены Ozon: url=%s", url)
             if html:
-                with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as f:
-                    f.write(html)
+                with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
+                    file.write(html)
             return {
                 "price_with_spp": None,
                 "price_without_spp": None,
@@ -192,12 +208,12 @@ class OzonPriceMonitor:
                 await browser.close()
 
     async def _open_product_page(self, page: Page, url: str) -> None:
-        """Открыть страницу товара и дождаться базовой загрузки без GUI-зависимостей."""
+        """Открыть страницу товара и дождаться базовой загрузки."""
         await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
-        await page.wait_for_selector("body", timeout=self.timeout_ms)
-        await page.wait_for_timeout(DEFAULT_WAIT_AFTER_LOAD_MS)
+        await page.wait_for_selector("body", timeout=60000)
+        await page.wait_for_timeout(3000)
         await page.mouse.wheel(0, 3000)
-        await page.wait_for_timeout(DEFAULT_WAIT_AFTER_SCROLL_MS)
+        await page.wait_for_timeout(2000)
 
     async def _find_price_text(self, page: Page, selectors: list[str], label: str, url: str) -> str | None:
         """Найти цену по списку селекторов."""
@@ -213,20 +229,23 @@ class OzonPriceMonitor:
             text = await self._extract_text_by_selector(page, selector, label, url)
             if text and self._clean_price(text) is not None:
                 return text
-        candidates = await page.locator("span").all_inner_texts()
-        for candidate in candidates:
-            if "₽" in candidate and self._clean_price(candidate) is not None:
-                logger.info("Найдена fallback-цена по тексту: url=%s label=%s text=%s", url, label, candidate)
-                return candidate
+
+        all_spans = await page.locator("span").all_inner_texts()
+        for text in all_spans:
+            if "₽" in text and self._clean_price(text) is not None:
+                logger.info("Найдена fallback-цена по span: url=%s label=%s text=%s", url, label, text)
+                return text
         return None
 
     async def _find_second_generic_price_text(self, page: Page, url: str) -> str | None:
-        """Найти вторую цену с рублём, если без-SPP селектор не сработал."""
-        candidates = []
-        all_texts = await page.locator("span").all_inner_texts()
-        for candidate in all_texts:
-            if "₽" in candidate and self._clean_price(candidate) is not None:
-                candidates.append(candidate)
+        """Найти вторую цену с рублём, если отдельный селектор без СПП не сработал."""
+        candidates: list[str] = []
+        all_spans = await page.locator("span").all_inner_texts()
+
+        for text in all_spans:
+            if "₽" in text and self._clean_price(text) is not None:
+                candidates.append(text)
+
         logger.info("Fallback-кандидаты цен: url=%s candidates=%s", url, candidates[:10])
         if len(candidates) > 1:
             return candidates[1]
@@ -261,6 +280,7 @@ class OzonPriceMonitor:
         """Очистить текст цены и вернуть число."""
         if not raw_text:
             return None
+
         candidate = (
             raw_text.replace("₽", " ")
             .replace("&thinsp;", " ")
@@ -271,6 +291,7 @@ class OzonPriceMonitor:
         match = re.search(r"(\d[\d\s.,]*)", candidate)
         if not match:
             return None
+
         normalized = match.group(1).replace(" ", "").replace(",", ".").strip()
         try:
             return float(normalized)
@@ -285,7 +306,7 @@ class OzonPriceMonitor:
             return True
         if normalized in {"false", "0", "no"}:
             return False
-        return True
+        return False
 
     def _looks_like_block_page(self, title: str, html: str) -> bool:
         """Проверить, не вернул ли Ozon капчу, 403 или заглушку вместо карточки товара."""
