@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import re
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -75,8 +76,16 @@ class OzonPriceMonitor:
             playwright_version = self._get_playwright_version()
             headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
             headless = self._normalize_headless(headless_env_value)
+            proxy = None
+            if settings.PROXY_SERVER:
+                proxy = {"server": settings.PROXY_SERVER}
+                if settings.PROXY_USERNAME:
+                    proxy["username"] = settings.PROXY_USERNAME
+                if settings.PROXY_PASSWORD:
+                    proxy["password"] = settings.PROXY_PASSWORD
+
             launch_options = {
-                "headless": headless,
+                "headless": False,
                 "args": [
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
@@ -85,6 +94,8 @@ class OzonPriceMonitor:
                     "--disable-blink-features=AutomationControlled",
                 ],
             }
+            if proxy:
+                launch_options["proxy"] = proxy
 
             logger.info("PRICE_MONITOR_HEADLESS=%s", headless_env_value)
             logger.info("Playwright headless=%s", headless)
@@ -125,6 +136,7 @@ class OzonPriceMonitor:
                 page.set_default_timeout(self.timeout_ms)
 
                 await self._open_product_page(page, url)
+                await page.wait_for_timeout(random.randint(3000, 7000))
 
                 page_title = await page.title()
                 final_url = page.url

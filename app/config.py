@@ -27,6 +27,9 @@ class Settings:
     DISCOUNT_REQUESTS_MODE = os.getenv("DISCOUNT_REQUESTS_MODE", "требуется_проверка")
     PRICE_MONITOR_HEADLESS = os.getenv("PRICE_MONITOR_HEADLESS", "true")
     PRICE_MONITOR_TIMEOUT_MS = int(os.getenv("PRICE_MONITOR_TIMEOUT_MS", "30000"))
+    PROXY_SERVER = os.getenv("PROXY_SERVER", "")
+    PROXY_USERNAME = os.getenv("PROXY_USERNAME", "")
+    PROXY_PASSWORD = os.getenv("PROXY_PASSWORD", "")
     HTTP_PROXY = os.getenv("HTTP_PROXY", "")
     HTTPS_PROXY = os.getenv("HTTPS_PROXY", "")
     NO_PROXY = os.getenv("NO_PROXY", "")
@@ -49,6 +52,9 @@ def env_presence_map() -> dict[str, dict[str, bool]]:
         "TELEGRAM_CHAT_ID",
         "PRICE_MONITOR_HEADLESS",
         "PRICE_MONITOR_TIMEOUT_MS",
+        "PROXY_SERVER",
+        "PROXY_USERNAME",
+        "PROXY_PASSWORD",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "NO_PROXY",
