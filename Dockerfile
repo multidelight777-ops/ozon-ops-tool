@@ -9,6 +9,7 @@ COPY requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r /app/requirements.txt
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y tzdata
 
 COPY . /app
