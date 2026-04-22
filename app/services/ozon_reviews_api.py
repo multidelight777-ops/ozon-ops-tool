@@ -20,6 +20,7 @@ class OzonClient:
         self.reviews_list_path = settings.OZON_REVIEWS_LIST_PATH
         self.timeout_seconds = settings.OZON_REVIEWS_TIMEOUT_SECONDS
         self.session = requests.Session()
+        self.last_error: dict[str, Any] | None = None
 
         if settings.HTTP_PROXY:
             self.session.proxies["http"] = settings.HTTP_PROXY
@@ -190,12 +191,14 @@ class OzonClient:
         logger.info("Запущена загрузка отзывов из Ozon Seller API.")
         data = self._post_json(self.reviews_list_path, payload)
         if data.get("ok") is False:
+            self.last_error = data
             logger.warning(
                 "Ozon reviews API вернул ошибку. status=%s body=%s",
                 data.get("status"),
                 data.get("body"),
             )
-            return data
+            return []
+        self.last_error = None
         items = data.get("reviews") or data.get("result", {}).get("reviews") or data.get("result") or []
         logger.info("Из Ozon Seller API получено отзывов: %s", len(items) if isinstance(items, list) else 0)
         return items if isinstance(items, list) else []

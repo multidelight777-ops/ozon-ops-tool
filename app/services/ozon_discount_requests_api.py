@@ -98,8 +98,27 @@ class OzonDiscountClient:
                 json=payload,
                 timeout=DEFAULT_TIMEOUT_SECONDS,
             )
-            response.raise_for_status()
-            data = response.json()
+            response_text = response.text
+
+            logger.info(
+                "Ответ Ozon по заявкам на скидку: status_code=%s, body=%s",
+                response.status_code,
+                response_text,
+            )
+
+            try:
+                data = response.json()
+            except ValueError:
+                data = {"raw": response_text}
+
+            if not response.ok:
+                return {
+                    "ok": False,
+                    "items": [],
+                    "status_code": response.status_code,
+                    "message": f"Ozon вернул ошибку: {response_text}",
+                    "raw": data,
+                }
 
             items: list[dict[str, Any]] = []
             if isinstance(data, dict):

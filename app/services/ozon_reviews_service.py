@@ -268,7 +268,7 @@ def load_reviews_from_api(db: Session) -> dict[str, int]:
     client = OzonClient()
     raw_reviews = client.fetch_reviews()
 
-    if isinstance(raw_reviews, dict) and raw_reviews.get("ok") is False:
+    if client.last_error is not None:
         return {
             "processed": 0,
             "created": 0,
@@ -276,8 +276,8 @@ def load_reviews_from_api(db: Session) -> dict[str, int]:
             "loaded": 0,
             "errors": 1,
             "api_ok": False,
-            "api_status": raw_reviews.get("status"),
-            "api_body": raw_reviews.get("body"),
+            "api_status": client.last_error.get("status"),
+            "api_body": client.last_error.get("body"),
         }
 
     processed = 0

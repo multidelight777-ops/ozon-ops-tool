@@ -1,7 +1,7 @@
-import asyncio
-import logging
+﻿import logging
 import traceback
 from datetime import datetime
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import Base, engine, get_db
 from app.models import MonitoredProduct, PriceMonitor
 from app.services.logger import log_action
 from app.services.ozon_price_monitor import OzonPriceMonitor
@@ -23,18 +23,34 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 def _to_moscow_string(value: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str | None:
-    """Преобразовать datetime в строку московского времени."""
+    """РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ datetime РІ СЃС‚СЂРѕРєСѓ РјРѕСЃРєРѕРІСЃРєРѕРіРѕ РІСЂРµРјРµРЅРё."""
     if value is None:
         return None
-
     dt = value
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
     return dt.astimezone(moscow).strftime(fmt)
 
 
+def _validate_product_input(sku: str, product_name: str, url: str) -> str | None:
+    """РџСЂРѕРІРµСЂРёС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ С„РѕСЂРјС‹ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР°."""
+    if not sku:
+        return "Р—Р°РїРѕР»РЅРёС‚Рµ SKU."
+    if not product_name:
+        return "Р—Р°РїРѕР»РЅРёС‚Рµ РЅР°Р·РІР°РЅРёРµ С‚РѕРІР°СЂР°."
+    if not url:
+        return "Р—Р°РїРѕР»РЅРёС‚Рµ URL."
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "РЈРєР°Р¶РёС‚Рµ РєРѕСЂСЂРµРєС‚РЅС‹Р№ URL."
+    if "ozon" not in parsed.netloc.lower():
+        return "Р”Р»СЏ РјРѕРЅРёС‚РѕСЂРёРЅРіР° РЅСѓР¶РµРЅ URL РєР°СЂС‚РѕС‡РєРё Ozon."
+    return None
+
+
 def _build_rows(db: Session) -> list[dict]:
-    """Собрать строки таблицы с последней ценой по каждому товару."""
+    """РЎРѕР±СЂР°С‚СЊ СЃС‚СЂРѕРєРё С‚Р°Р±Р»РёС†С‹ СЃ РїРѕСЃР»РµРґРЅРµР№ С†РµРЅРѕР№ РїРѕ РєР°Р¶РґРѕРјСѓ С‚РѕРІР°СЂСѓ."""
     rows: list[dict] = []
     products = db.query(MonitoredProduct).order_by(MonitoredProduct.created_at.desc()).all()
 
@@ -67,7 +83,7 @@ def _build_rows(db: Session) -> list[dict]:
 
 @router.get("/", response_class=HTMLResponse)
 def price_monitor_page(request: Request, db: Session = Depends(get_db)):
-    """Показать страницу мониторинга витринных цен."""
+    """РџРѕРєР°Р·Р°С‚СЊ СЃС‚СЂР°РЅРёС†Сѓ РјРѕРЅРёС‚РѕСЂРёРЅРіР° РІРёС‚СЂРёРЅРЅС‹С… С†РµРЅ."""
     return templates.TemplateResponse(
         "price_monitor.html",
         {
@@ -80,10 +96,10 @@ def price_monitor_page(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{product_id}/chart", response_class=HTMLResponse)
 def price_monitor_chart_page(product_id: int, request: Request, db: Session = Depends(get_db)):
-    """Показать график истории цен по одному товару."""
+    """РџРѕРєР°Р·Р°С‚СЊ РіСЂР°С„РёРє РёСЃС‚РѕСЂРёРё С†РµРЅ РїРѕ РѕРґРЅРѕРјСѓ С‚РѕРІР°СЂСѓ."""
     product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
     if not product:
-        raise HTTPException(status_code=404, detail="Товар не найден")
+        raise HTTPException(status_code=404, detail="РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ")
 
     history = (
         db.query(PriceMonitor)
@@ -114,63 +130,117 @@ def price_monitor_chart_page(product_id: int, request: Request, db: Session = De
 
 
 @router.post("/add")
-def add_monitored_product(request: Request, db: Session = Depends(get_db)):
-    """Добавить товар в мониторинг витринных цен."""
-    form = asyncio.run(request.form())
-    sku = str(form.get("sku") or "").strip()
-    product_name = str(form.get("product_name") or "").strip()
-    url = str(form.get("url") or "").strip()
+async def add_monitored_product(request: Request, db: Session = Depends(get_db)):
+    """Р”РѕР±Р°РІРёС‚СЊ С‚РѕРІР°СЂ РІ РјРѕРЅРёС‚РѕСЂРёРЅРі С†РµРЅ СЃ РІР°Р»РёРґР°С†РёРµР№ Рё РїРѕРЅСЏС‚РЅС‹РјРё РѕС€РёР±РєР°РјРё."""
+    logger.info("Р’С…РѕРґ РІ РјР°СЂС€СЂСѓС‚ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР° /price-monitor/add")
+    Base.metadata.create_all(bind=engine)
 
-    if not sku or not product_name or not url:
+    try:
+        form = await request.form()
+        sku = str(form.get("sku") or "").strip()
+        product_name = str(form.get("product_name") or "").strip()
+        url = str(form.get("url") or "").strip()
+
+        logger.info("РџРѕР»СѓС‡РµРЅС‹ РґР°РЅРЅС‹Рµ С„РѕСЂРјС‹ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР°: sku=%s product_name=%s url=%s", sku, product_name, url)
+
+        validation_error = _validate_product_input(sku, product_name, url)
+        if validation_error:
+            logger.warning("РћС€РёР±РєР° РІР°Р»РёРґР°С†РёРё РїСЂРё РґРѕР±Р°РІР»РµРЅРёРё С‚РѕРІР°СЂР°: %s", validation_error)
+            return RedirectResponse(
+                url=f"/price-monitor/?message={quote(validation_error)}",
+                status_code=303,
+            )
+
+        existing_product = (
+            db.query(MonitoredProduct)
+            .filter(MonitoredProduct.sku == sku, MonitoredProduct.url == url)
+            .first()
+        )
+        if existing_product:
+            message = f"РўРѕРІР°СЂ СЃ SKU {sku} Рё С‚Р°РєРёРј URL СѓР¶Рµ РґРѕР±Р°РІР»РµРЅ РІ РјРѕРЅРёС‚РѕСЂРёРЅРі."
+            logger.warning("Р”СѓР±Р»РёРєР°С‚ С‚РѕРІР°СЂР° РІ РјРѕРЅРёС‚РѕСЂРёРЅРіРµ: sku=%s url=%s", sku, url)
+            return RedirectResponse(
+                url=f"/price-monitor/?message={quote(message)}",
+                status_code=303,
+            )
+
+        product = MonitoredProduct(sku=sku, product_name=product_name, url=url)
+        db.add(product)
+        db.commit()
+        db.refresh(product)
+
+        logger.info("РўРѕРІР°СЂ СѓСЃРїРµС€РЅРѕ СЃРѕС…СЂР°РЅС‘РЅ РІ Р‘Р”: product_id=%s sku=%s", product.id, sku)
+        log_action(
+            db,
+            "price_monitor_product_added",
+            f"Р’ РјРѕРЅРёС‚РѕСЂРёРЅРі РґРѕР±Р°РІР»РµРЅ С‚РѕРІР°СЂ: sku={sku}, product_name={product_name}, url={url}.",
+        )
         return RedirectResponse(
-            url="/price-monitor/?message=Заполните SKU, название товара и URL",
+            url="/price-monitor/?message=РўРѕРІР°СЂ СѓСЃРїРµС€РЅРѕ РґРѕР±Р°РІР»РµРЅ РІ РјРѕРЅРёС‚РѕСЂРёРЅРі",
             status_code=303,
         )
-
-    product = MonitoredProduct(sku=sku, product_name=product_name, url=url)
-    db.add(product)
-    db.commit()
-
-    log_action(db, "price_monitor_product_added", f"В мониторинг добавлен товар: sku={sku}, product_name={product_name}.")
-    return RedirectResponse(
-        url="/price-monitor/?message=Товар добавлен в мониторинг",
-        status_code=303,
-    )
+    except Exception as exc:
+        trace = traceback.format_exc()
+        logger.exception("РћС€РёР±РєР° РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР° РІ РјРѕРЅРёС‚РѕСЂРёРЅРі: %s", exc)
+        try:
+            log_action(db, "price_monitor_product_add_error", f"РћС€РёР±РєР° РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР°: {exc}")
+        except Exception:
+            logger.exception("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїРёСЃР°С‚СЊ РѕС€РёР±РєСѓ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР° РІ AuditLog")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "message": "РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ С‚РѕРІР°СЂ РІ РјРѕРЅРёС‚РѕСЂРёРЅРі",
+                "error": str(exc),
+                "traceback": trace,
+            },
+        )
 
 
 @router.post("/{product_id}/refresh")
-def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
-    """Обновить витринные цены для одного товара и вернуть диагностику при ошибке."""
-    logger.info("Вход в маршрут обновления цены витрины: product_id=%s", product_id)
+async def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
+    """РћР±РЅРѕРІРёС‚СЊ РІРёС‚СЂРёРЅРЅС‹Рµ С†РµРЅС‹ РґР»СЏ РѕРґРЅРѕРіРѕ С‚РѕРІР°СЂР° Рё РІРµСЂРЅСѓС‚СЊ РґРёР°РіРЅРѕСЃС‚РёРєСѓ РїСЂРё РѕС€РёР±РєРµ."""
+    logger.info("Р’С…РѕРґ РІ РјР°СЂС€СЂСѓС‚ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ РІРёС‚СЂРёРЅС‹: product_id=%s", product_id)
+    Base.metadata.create_all(bind=engine)
 
     product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
     if not product:
-        logger.warning("Товар для обновления цены не найден: product_id=%s", product_id)
-        raise HTTPException(status_code=404, detail="Товар не найден")
+        logger.warning("РўРѕРІР°СЂ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ РЅРµ РЅР°Р№РґРµРЅ: product_id=%s", product_id)
+        raise HTTPException(status_code=404, detail="РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ")
 
-    logger.info(
-        "Старт обновления цены витрины: product_id=%s, sku=%s, url=%s",
-        product_id,
-        product.sku,
-        product.url,
-    )
+    logger.info("РЎС‚Р°СЂС‚ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ РІРёС‚СЂРёРЅС‹: product_id=%s sku=%s url=%s", product_id, product.sku, product.url)
 
     monitor = OzonPriceMonitor()
     logger.info(
-        "Playwright browser engine=%s, timeout_ms=%s, launch_args=%s",
+        "Playwright browser engine=%s timeout_ms=%s launch_args=%s",
         "chromium",
         monitor.timeout_ms,
         monitor.browser_args,
     )
 
     try:
-        result = asyncio.run(monitor.get_price(product.url))
-        logger.info(
-            "Парсинг цены завершён: product_id=%s, sku=%s, result=%s",
-            product_id,
-            product.sku,
-            result,
-        )
+        result = await monitor.get_price(product.url)
+        logger.info("РџР°СЂСЃРёРЅРі С†РµРЅС‹ Р·Р°РІРµСЂС€С‘РЅ: product_id=%s sku=%s result=%s", product_id, product.sku, result)
+
+        if result.get("price_with_spp") is None and result.get("price_without_spp") is None:
+            details = "Парсер не нашёл цену на странице Ozon."
+            logger.warning("Парсер цены не нашёл ни одной цены: product_id=%s details=%s", product_id, details)
+            log_action(
+                db,
+                "price_monitor_refresh_error",
+                f"Ошибка обновления цены товара sku={product.sku}, url={product.url}: {details}",
+            )
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "message": "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ С†РµРЅСѓ РІРёС‚СЂРёРЅС‹",
+                    "product_id": product_id,
+                    "sku": product.sku,
+                    "url": product.url,
+                    "details": details,
+                },
+            )
 
         price_row = PriceMonitor(
             sku=product.sku,
@@ -186,39 +256,31 @@ def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
             db,
             "price_monitor_refreshed",
             (
-                f"Обновлены цены товара sku={product.sku}. "
-                f"Цена с СПП={result.get('price_with_spp')}, "
-                f"цена без СПП={result.get('price_without_spp')}."
+                f"РћР±РЅРѕРІР»РµРЅС‹ С†РµРЅС‹ С‚РѕРІР°СЂР° sku={product.sku}. "
+                f"Р¦РµРЅР° СЃ РЎРџРџ={result.get('price_with_spp')}, "
+                f"С†РµРЅР° Р±РµР· РЎРџРџ={result.get('price_without_spp')}."
             ),
         )
         return RedirectResponse(
-            url="/price-monitor/?message=Цены успешно обновлены",
+            url="/price-monitor/?message=Р¦РµРЅС‹ СѓСЃРїРµС€РЅРѕ РѕР±РЅРѕРІР»РµРЅС‹",
             status_code=303,
         )
     except Exception as exc:
         trace = traceback.format_exc()
-        logger.exception(
-            "Ошибка в refresh flow мониторинга цен: product_id=%s, sku=%s, url=%s, error=%s",
-            product_id,
-            product.sku,
-            product.url,
-            exc,
-        )
-
+        logger.exception("РћС€РёР±РєР° РІ refresh flow РјРѕРЅРёС‚РѕСЂРёРЅРіР° С†РµРЅ: product_id=%s sku=%s url=%s", product_id, product.sku, product.url)
         try:
             log_action(
                 db,
                 "price_monitor_refresh_error",
-                f"Ошибка обновления цены товара sku={product.sku}, url={product.url}: {exc}",
+                f"РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ С‚РѕРІР°СЂР° sku={product.sku}, url={product.url}: {exc}",
             )
         except Exception:
-            logger.exception("Не удалось записать ошибку обновления цены в AuditLog: product_id=%s", product_id)
-
+            logger.exception("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїРёСЃР°С‚СЊ РѕС€РёР±РєСѓ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ РІ AuditLog: product_id=%s", product_id)
         return JSONResponse(
             status_code=500,
             content={
                 "ok": False,
-                "message": "Не удалось обновить цену витрины",
+                "message": "РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ С†РµРЅСѓ РІРёС‚СЂРёРЅС‹",
                 "product_id": product_id,
                 "sku": product.sku,
                 "url": product.url,
@@ -230,10 +292,10 @@ def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{product_id}/delete")
 def delete_monitored_product(product_id: int, db: Session = Depends(get_db)):
-    """Удалить товар из мониторинга."""
+    """РЈРґР°Р»РёС‚СЊ С‚РѕРІР°СЂ РёР· РјРѕРЅРёС‚РѕСЂРёРЅРіР°."""
     product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
     if not product:
-        raise HTTPException(status_code=404, detail="Товар не найден")
+        raise HTTPException(status_code=404, detail="РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ")
 
     db.query(PriceMonitor).filter(
         PriceMonitor.sku == product.sku,
@@ -243,8 +305,9 @@ def delete_monitored_product(product_id: int, db: Session = Depends(get_db)):
     db.delete(product)
     db.commit()
 
-    log_action(db, "price_monitor_deleted", f"Удалён товар из мониторинга: sku={product.sku}.")
+    log_action(db, "price_monitor_deleted", f"РЈРґР°Р»С‘РЅ С‚РѕРІР°СЂ РёР· РјРѕРЅРёС‚РѕСЂРёРЅРіР°: sku={product.sku}.")
     return RedirectResponse(
-        url="/price-monitor/?message=Товар удалён",
+        url="/price-monitor/?message=РўРѕРІР°СЂ СѓРґР°Р»С‘РЅ",
         status_code=303,
     )
+

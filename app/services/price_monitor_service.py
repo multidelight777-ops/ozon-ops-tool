@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 import time
 import logging
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("app.price_monitor_service")
 
 
 async def refresh_all_prices() -> dict[str, int]:
-    """Обновить цены витрины для всех товаров из мониторинга."""
+    """РћР±РЅРѕРІРёС‚СЊ С†РµРЅС‹ РІРёС‚СЂРёРЅС‹ РґР»СЏ РІСЃРµС… С‚РѕРІР°СЂРѕРІ РёР· РјРѕРЅРёС‚РѕСЂРёРЅРіР°."""
     db: Session = SessionLocal()
     started_at = time.perf_counter()
     stats = {
@@ -28,12 +28,20 @@ async def refresh_all_prices() -> dict[str, int]:
         products = db.query(MonitoredProduct).order_by(MonitoredProduct.created_at.desc()).all()
         monitor = OzonPriceMonitor()
 
-        logger.info("Старт массового обновления цен витрины. Товаров в мониторинге: %s", len(products))
+        logger.info("РЎС‚Р°СЂС‚ РјР°СЃСЃРѕРІРѕРіРѕ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅ РІРёС‚СЂРёРЅС‹. РўРѕРІР°СЂРѕРІ РІ РјРѕРЅРёС‚РѕСЂРёРЅРіРµ: %s", len(products))
 
         for product in products:
             stats["processed"] += 1
             try:
                 result = await monitor.get_price(product.url)
+                if result.get("price_with_spp") is None and result.get("price_without_spp") is None:
+                    stats["errors"] += 1
+                    log_action(
+                        db,
+                        "price_monitor_auto_refresh_error",
+                        f"Ошибка автообновления цен для sku={product.sku}: парсер не нашёл цену.",
+                    )
+                    continue
                 price_row = PriceMonitor(
                     sku=product.sku,
                     url=product.url,
@@ -49,7 +57,7 @@ async def refresh_all_prices() -> dict[str, int]:
                     db,
                     "price_monitor_auto_refreshed",
                     (
-                        f"Автообновление цен для sku={product.sku}. "
+                        f"РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ С†РµРЅ РґР»СЏ sku={product.sku}. "
                         f"price_with_spp={result.get('price_with_spp')}, "
                         f"price_without_spp={result.get('price_without_spp')}."
                     ),
@@ -59,12 +67,12 @@ async def refresh_all_prices() -> dict[str, int]:
                 log_action(
                     db,
                     "price_monitor_auto_refresh_error",
-                    f"Ошибка автообновления цен для sku={product.sku}: {exc}",
+                    f"РћС€РёР±РєР° Р°РІС‚РѕРѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅ РґР»СЏ sku={product.sku}: {exc}",
                 )
 
         stats["duration_seconds"] = round(time.perf_counter() - started_at, 2)
         logger.info(
-            "Массовое обновление цен витрины завершено. updated=%s, errors=%s, duration_seconds=%s",
+            "РњР°СЃСЃРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ С†РµРЅ РІРёС‚СЂРёРЅС‹ Р·Р°РІРµСЂС€РµРЅРѕ. updated=%s, errors=%s, duration_seconds=%s",
             stats["updated"],
             stats["errors"],
             stats["duration_seconds"],
@@ -72,3 +80,4 @@ async def refresh_all_prices() -> dict[str, int]:
         return stats
     finally:
         db.close()
+
