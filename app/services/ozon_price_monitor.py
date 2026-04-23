@@ -23,12 +23,6 @@ logger = logging.getLogger("app.ozon_price_monitor")
 DEFAULT_TIMEOUT_MS = 30000
 PLAYWRIGHT_BROWSER_ENGINE = "chromium"
 DEBUG_HTML_DIR = Path(BASE_DIR) / "app" / "data" / "debug"
-PRICE_BLOCK_SELECTOR = "[data-widget='webPrice']"
-PRIMARY_PRICE_SELECTORS = [
-    "[data-widget='webPrice'] span",
-    "[data-widget='webPrice']",
-    "span.tsHeadline600Large",
-]
 NEGATIVE_PAGE_MARKERS = [
     "captcha",
     "доступ ограничен",
@@ -45,7 +39,7 @@ class OzonPriceMonitor:
         self.timeout_ms = timeout_ms or settings.PRICE_MONITOR_TIMEOUT_MS or DEFAULT_TIMEOUT_MS
 
     async def get_price(self, url: str) -> dict[str, float | None]:
-        """Открыть карточку товара и взять цены только из основного блока цены Ozon."""
+        """Открыть карточку товара и вернуть точные цены из известных CSS-селекторов Ozon."""
         logger.info("Запуск мониторинга цены Ozon: url=%s", url)
         print("START PARSING:", url)
         os.makedirs("app/data/debug", exist_ok=True)
@@ -85,14 +79,14 @@ class OzonPriceMonitor:
             async with async_playwright() as playwright:
                 logger.info("Chromium executable path=%s", playwright.chromium.executable_path)
                 browser = None
-                for attempt in range(2):
+                for launch_attempt in range(2):
                     try:
                         browser = await playwright.chromium.launch(**launch_options)
                         browser.on("disconnected", lambda: logger.error("BROWSER CRASHED"))
                         break
                     except Exception as exc:
-                        logger.warning("Ошибка запуска Chromium, попытка=%s error=%s", attempt + 1, exc)
-                        if attempt == 1:
+                        logger.warning("Ошибка запуска Chromium, попытка=%s error=%s", launch_attempt + 1, exc)
+                        if launch_attempt == 1:
                             raise exc
                         await asyncio.sleep(2)
 
@@ -155,31 +149,27 @@ class OzonPriceMonitor:
                         await page.wait_for_timeout(random.randint(4000, 8000))
                         continue
 
+                    price_with_spp_text = None
+                    price_without_spp_text = None
+
                     try:
-                        await page.wait_for_selector(PRICE_BLOCK_SELECTOR, timeout=7000)
+                        el = page.locator("span.tsHeadline600Large").first
+                        if await el.count() > 0:
+                            price_with_spp_text = await el.inner_text()
                     except Exception:
-                        logger.warning("Основной блок цены Ozon не появился в DOM")
+                        pass
 
-                    price_with_spp_text = await self._find_primary_price_text(page, url)
-                    price_block = page.locator(PRICE_BLOCK_SELECTOR).first
-                    prices = await price_block.locator("span").all_inner_texts()
-                    prices = [price for price in prices if "₽" in price]
-                    logger.info("PRICE BLOCK TEXTS: %s", prices)
+                    try:
+                        el2 = page.locator("span.pdp_i4b.tsHeadline500Medium").first
+                        if await el2.count() > 0:
+                            price_without_spp_text = await el2.inner_text()
+                    except Exception:
+                        pass
 
-                    if price_with_spp_text is None and len(prices) >= 1:
-                        price_with_spp_text = prices[0]
-                    price_without_spp_text = prices[1] if len(prices) >= 2 else None
+                    logger.info("OZON RAW PRICES: spp=%s, no_spp=%s", price_with_spp_text, price_without_spp_text)
 
-                    logger.info("PRIMARY PRICE TEXT: %s", price_with_spp_text)
                     price_with_spp = self._clean_price(price_with_spp_text)
                     price_without_spp = self._clean_price(price_without_spp_text)
-
-                    if price_with_spp is not None and price_with_spp > 100000:
-                        logger.warning("Основная цена выглядит как мусор и будет проигнорирована: %s", price_with_spp)
-                        price_with_spp = None
-                    if price_without_spp is not None and price_without_spp > 100000:
-                        logger.warning("Цена без СПП выглядит как мусор и будет проигнорирована: %s", price_without_spp)
-                        price_without_spp = None
 
                     logger.info(
                         "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
@@ -202,7 +192,7 @@ class OzonPriceMonitor:
                     with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
                         file.write(html)
                     logger.warning(
-                        "Цена не найдена в основном блоке: attempt=%s url=%s final_url=%s title=%s",
+                        "Цена не найдена по точным селекторам: attempt=%s url=%s final_url=%s title=%s",
                         attempt + 1,
                         url,
                         final_url,
@@ -243,22 +233,6 @@ class OzonPriceMonitor:
         await page.wait_for_timeout(3000)
         await page.mouse.wheel(0, 3000)
         await page.wait_for_timeout(2000)
-
-    async def _find_primary_price_text(self, page: Page, url: str) -> str | None:
-        """Найти основную цену только через селекторы основного блока цены."""
-        for selector in PRIMARY_PRICE_SELECTORS:
-            try:
-                locator = page.locator(selector)
-                count = await locator.count()
-                if count == 0:
-                    logger.info("Селектор основной цены не найден: url=%s selector=%s", url, selector)
-                    continue
-                text = await locator.first.inner_text()
-                logger.info("Селектор основной цены найден: url=%s selector=%s text=%s", url, selector, text)
-                return text
-            except Exception as exc:
-                logger.warning("Ошибка чтения основной цены: url=%s selector=%s error=%s", url, selector, exc)
-        return None
 
     async def _dump_debug_html(self, html: str, label: str) -> None:
         """Сохранить HTML страницы в debug-файл для диагностики."""
