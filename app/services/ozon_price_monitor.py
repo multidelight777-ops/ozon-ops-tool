@@ -75,7 +75,11 @@ class OzonPriceMonitor:
         try:
             playwright_version = self._get_playwright_version()
             headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
-            proxy = None
+            proxy = {
+                "server": "http://135.106.99.221:62656",
+                "username": "p3CrpmrE",
+                "password": "WaWYAaFF",
+            }
 
             launch_options = {
                 "headless": True,
@@ -86,8 +90,10 @@ class OzonPriceMonitor:
                     "--disable-gpu",
                     "--disable-blink-features=AutomationControlled",
                 ],
+                "proxy": proxy,
             }
 
+            logger.info("USING PROXY: %s", proxy["server"])
             logger.info("PRICE_MONITOR_HEADLESS=%s", headless_env_value)
             logger.info("Playwright headless=%s", launch_options["headless"])
             logger.info("Playwright package version=%s", playwright_version)
