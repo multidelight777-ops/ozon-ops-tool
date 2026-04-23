@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -16,6 +18,7 @@ from app.services.telegram_service import send_telegram_message
 
 scheduler = AsyncIOScheduler()
 logger = logging.getLogger("app.scheduler")
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
 def _send_due_task_notifications() -> None:
@@ -145,6 +148,7 @@ def _process_ozon_reviews() -> None:
 
 async def run_price_monitor_job() -> None:
     """Каждый час обновлять цены витрины для всех товаров мониторинга."""
+    print(f"[SCHEDULER] START {datetime.now(MOSCOW_TZ)}")
     logger.info("Запуск автообновления цен витрины")
     stats = await refresh_all_prices()
     logger.info(
@@ -153,6 +157,7 @@ async def run_price_monitor_job() -> None:
         stats.get("errors"),
         stats.get("duration_seconds"),
     )
+    print("[SCHEDULER] DONE")
 
 
 def start_scheduler() -> None:
@@ -183,8 +188,11 @@ def start_scheduler() -> None:
     )
     scheduler.add_job(
         run_price_monitor_job,
-        "interval",
-        hours=1,
+        CronTrigger(
+            hour="8-19",
+            minute=0,
+            timezone=MOSCOW_TZ,
+        ),
         id="price_monitor_job",
         replace_existing=True,
     )

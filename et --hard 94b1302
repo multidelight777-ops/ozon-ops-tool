@@ -1,0 +1,27 @@
+[33mb9be715[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix ozon new era5
+[33m14bc1d1[m fix ozon new era4
+[33m2eb7b76[m fix ozon new era3
+[33me5c05b4[m fix ozon new era2
+[33mf7cad99[m fix ozon new era
+[33m94b1302[m fix ozon soft block parsing6
+[33mcc23cb1[m fix ozon soft block parsing5
+[33m8879be7[m fix browser_args attribute after rollback
+[33m640b53b[m fix ozon soft block parsing4
+[33m3c1c177[m fix ozon soft block parsing3
+[33m3e57cee[m fix ozon soft block parsing1
+[33m0198e33[m fix ozon soft block parsing
+[33m3327cee[m fix proxy playwright
+[33m5141b6f[m fix playwright crash
+[33m18baff6[m fix playwright headless + stealth
+[33m82516c0[m fix headless true
+[33md706da0[m fix proxy + headless
+[33mec626a7[m proxy + ozon fix
+[33m26ba681[m fix playwright crash + ozon parser
+[33m2ec0196[m update playwright image to 1.52
+[33mca547a9[m fix ozon parser anti-bot
+[33ma67c3de[m fix tzdata noninteractive
+[33mdedd14b[m fix docker playwright + tzdata
+[33m07e5e04[m init project
+[33mf9f4438[m Before discount requests module
+[33m3b0934b[m Before Ozon reviews module
+[33mc38efd9[m Initial scaffold

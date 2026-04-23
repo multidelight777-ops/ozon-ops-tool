@@ -34,6 +34,12 @@ async def refresh_all_prices() -> dict[str, int]:
             stats["processed"] += 1
             try:
                 result = await monitor.get_price(product.url)
+                logger.info(
+                    "%s: %s / %s",
+                    product.sku,
+                    result.get("price_with_spp"),
+                    result.get("price_without_spp"),
+                )
                 if result.get("price_with_spp") is None and result.get("price_without_spp") is None:
                     stats["errors"] += 1
                     log_action(
