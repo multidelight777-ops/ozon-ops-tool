@@ -37,6 +37,12 @@ class OzonPriceMonitor:
 
     def __init__(self, timeout_ms: int | None = None) -> None:
         self.timeout_ms = timeout_ms or settings.PRICE_MONITOR_TIMEOUT_MS or DEFAULT_TIMEOUT_MS
+        self.browser_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
 
     async def get_price(self, url: str) -> dict[str, float | None]:
         """Открыть карточку товара и вернуть точные цены из известных CSS-селекторов Ozon."""
