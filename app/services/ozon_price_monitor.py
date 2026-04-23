@@ -76,12 +76,6 @@ class OzonPriceMonitor:
             playwright_version = self._get_playwright_version()
             headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
             proxy = None
-            if settings.PROXY_SERVER:
-                proxy = {"server": settings.PROXY_SERVER}
-                if settings.PROXY_USERNAME:
-                    proxy["username"] = settings.PROXY_USERNAME
-                if settings.PROXY_PASSWORD:
-                    proxy["password"] = settings.PROXY_PASSWORD
 
             launch_options = {
                 "headless": True,
@@ -93,8 +87,6 @@ class OzonPriceMonitor:
                     "--disable-blink-features=AutomationControlled",
                 ],
             }
-            if proxy:
-                launch_options["proxy"] = proxy
 
             logger.info("PRICE_MONITOR_HEADLESS=%s", headless_env_value)
             logger.info("Playwright headless=%s", launch_options["headless"])
@@ -108,6 +100,7 @@ class OzonPriceMonitor:
                 for attempt in range(2):
                     try:
                         browser = await playwright.chromium.launch(**launch_options)
+                        browser.on("disconnected", lambda: logger.error("BROWSER CRASHED"))
                         break
                     except Exception as exc:
                         logger.warning("Ошибка запуска Chromium, попытка=%s error=%s", attempt + 1, exc)
@@ -233,8 +226,6 @@ class OzonPriceMonitor:
                 "price_without_spp": None,
             }
         finally:
-            if context is not None:
-                await context.close()
             if browser is not None:
                 await browser.close()
 
