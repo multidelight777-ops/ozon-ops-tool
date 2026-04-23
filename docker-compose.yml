@@ -1,8 +1,26 @@
+version: "3.9"
+
 services:
   app:
+    container_name: ozon-ops-tool_app_1
+
     build:
       context: .
       dockerfile: Dockerfile
+
+    restart: always
+
+    volumes:
+      - ./data:/app/data
+
+    env_file:
+      - .env
+
+    environment:
+      - PYTHONPATH=/app
+
+    ports:
+      - "8000:8000"
     shm_size: 1gb
     working_dir: /app
     restart: always
