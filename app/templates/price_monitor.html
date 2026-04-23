@@ -4,7 +4,7 @@
 <section class="page-header">
     <div>
         <h2>Мониторинг цен (витрина)</h2>
-        <p>Раздел для сохранения карточек товаров и ручной проверки витринных цен Ozon.</p>
+        <p>Excel-таблица для контроля цены до скидки, СПП, цены без СПП и процента от базовой цены.</p>
     </div>
     <a href="#add-product-form" class="secondary-button">Добавить товар</a>
 </section>
@@ -19,7 +19,7 @@
     <div class="section-head">
         <div>
             <h2>Добавить товар</h2>
-            <p>Заполните SKU, название товара и ссылку на витрину Ozon.</p>
+            <p>Заполните SKU, название, ссылку на Ozon и при необходимости цену до скидки.</p>
         </div>
     </div>
     <form method="post" action="/price-monitor/add" class="reviews-filter-grid">
@@ -35,6 +35,10 @@
             URL
             <input type="url" name="url" placeholder="https://www.ozon.ru/..." required>
         </label>
+        <label>
+            Цена до скидки
+            <input type="number" name="base_price" step="0.01" min="0" placeholder="Например, 1990">
+        </label>
         <div class="filter-actions">
             <button type="submit">Сохранить</button>
         </div>
@@ -45,50 +49,115 @@
     <div class="section-head">
         <div>
             <h2>Список товаров</h2>
-            <p>Последние найденные цены берутся из таблицы мониторинга и показываются рядом с товаром.</p>
+            <p>Один товар занимает три строки: цена до скидки, цены СПП/без СПП и процент от цены до скидки.</p>
         </div>
     </div>
     <div class="table-wrap">
-        <table>
+        <table class="price-excel-table">
             <thead>
                 <tr>
-                    <th>SKU</th>
-                    <th>Название</th>
+                    <th>Артикул и товар</th>
+                    <th>Показатель</th>
                     <th>Цена с СПП</th>
                     <th>Цена без СПП</th>
-                    <th>Разница</th>
-                    <th>Последняя проверка</th>
-                    <th>Действия</th>
+                    <th>Дата и действия</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in rows %}
                 <tr>
-                    <td>{{ row.product.sku }}</td>
-                    <td>{{ row.product.product_name }}</td>
-                    <td>{{ row.price_with_spp if row.price_with_spp is not none else "-" }}</td>
-                    <td>{{ row.price_without_spp if row.price_without_spp is not none else "-" }}</td>
-                    <td>{{ row.difference if row.difference is not none else "-" }}</td>
-                    <td>{{ row.checked_at if row.checked_at else "-" }}</td>
-                    <td>
+                    <td rowspan="3">
+                        <strong>{{ row.sku }}</strong><br>
+                        <span class="muted">{{ row.name }}</span>
+                    </td>
+                    <td>До скидки</td>
+                    <td colspan="2">
+                        <input
+                            type="number"
+                            class="base-price-input"
+                            data-product-id="{{ row.id }}"
+                            value="{{ row.base_price if row.base_price is not none else '' }}"
+                            step="0.01"
+                            min="0"
+                            placeholder="-"
+                        >
+                        <span class="save-status" id="base-price-status-{{ row.id }}"></span>
+                    </td>
+                    <td rowspan="3">
+                        <div class="price-date">
+                            {{ row.checked_at if row.checked_at else "-" }}
+                        </div>
                         <div class="actions-row">
-                            <a href="/price-monitor/{{ row.product.id }}/chart" class="secondary-button">График</a>
-                            <form method="post" action="/price-monitor/{{ row.product.id }}/refresh">
+                            <a href="/price-monitor/{{ row.id }}/chart" class="secondary-button">График</a>
+                            <form method="post" action="/price-monitor/{{ row.id }}/refresh">
                                 <button type="submit">Обновить цены</button>
                             </form>
-                            <form method="post" action="/price-monitor/{{ row.product.id }}/delete">
+                            <form method="post" action="/price-monitor/{{ row.id }}/delete">
                                 <button type="submit" class="danger-button">Удалить товар</button>
                             </form>
                         </div>
                     </td>
                 </tr>
+                <tr>
+                    <td>СПП</td>
+                    <td>{{ row.price_with_spp if row.price_with_spp is not none else "-" }}</td>
+                    <td>{{ row.price_without_spp if row.price_without_spp is not none else "-" }}</td>
+                </tr>
+                <tr>
+                    <td>%</td>
+                    <td>
+                        {% if row.percent_with_spp is not none %}
+                            {{ row.percent_with_spp }}%
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.percent_without_spp is not none %}
+                            {{ row.percent_without_spp }}%
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7">Пока нет товаров для мониторинга.</td>
+                    <td colspan="5">Пока нет товаров для мониторинга.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </section>
+
+<script>
+document.querySelectorAll(".base-price-input").forEach((input) => {
+    input.addEventListener("change", async () => {
+        const productId = input.dataset.productId;
+        const status = document.getElementById(`base-price-status-${productId}`);
+        status.textContent = "Сохраняем...";
+
+        try {
+            const response = await fetch(`/price-monitor/product/${productId}`, {
+                method: "PATCH",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({base_price: input.value})
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                status.textContent = data.message || "Ошибка сохранения";
+                return;
+            }
+
+            status.textContent = "Сохранено";
+            window.setTimeout(() => {
+                status.textContent = "";
+            }, 1800);
+        } catch (error) {
+            status.textContent = "Ошибка сохранения";
+        }
+    });
+});
+</script>
 {% endblock %}

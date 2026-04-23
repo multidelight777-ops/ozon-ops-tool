@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
@@ -19,7 +20,24 @@ moscow = ZoneInfo("Europe/Moscow")
 logger = logging.getLogger("app.price_monitor")
 
 router = APIRouter(prefix="/price-monitor", tags=["price_monitor"])
+product_router = APIRouter(tags=["price_monitor"])
 templates = Jinja2Templates(directory="app/templates")
+
+
+def ensure_price_monitor_schema() -> None:
+    """Добавить новые колонки мониторинга цен в существующую SQLite-базу."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(monitored_products)")).fetchall()}
+        if "base_price" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN base_price FLOAT"))
+            logger.info("Добавлена колонка monitored_products.base_price")
+        if "updated_at" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN updated_at DATETIME"))
+            connection.execute(text("UPDATE monitored_products SET updated_at = created_at WHERE updated_at IS NULL"))
+            logger.info("Добавлена колонка monitored_products.updated_at")
 
 
 def _to_moscow_string(value: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str | None:
@@ -64,16 +82,27 @@ def _build_rows(db: Session) -> list[dict]:
 
         price_with_spp = latest_check.price_with_spp if latest_check else None
         price_without_spp = latest_check.price_without_spp if latest_check else None
-        difference = None
-        if price_with_spp is not None and price_without_spp is not None:
-            difference = round(price_without_spp - price_with_spp, 2)
+        base_price = product.base_price
+        percent_with_spp = None
+        percent_without_spp = None
+        if base_price and base_price > 0:
+            if price_with_spp:
+                percent_with_spp = round((price_with_spp / base_price) * 100, 2)
+            if price_without_spp:
+                percent_without_spp = round((price_without_spp / base_price) * 100, 2)
 
         rows.append(
             {
                 "product": product,
+                "id": product.id,
+                "sku": product.sku,
+                "name": product.product_name,
+                "base_price": base_price,
                 "price_with_spp": price_with_spp,
                 "price_without_spp": price_without_spp,
-                "difference": difference,
+                "percent_with_spp": percent_with_spp,
+                "percent_without_spp": percent_without_spp,
+                "updated_at": _to_moscow_string(product.updated_at),
                 "checked_at": _to_moscow_string(latest_check.checked_at) if latest_check else None,
             }
         )
@@ -84,11 +113,30 @@ def _build_rows(db: Session) -> list[dict]:
 @router.get("/", response_class=HTMLResponse)
 def price_monitor_page(request: Request, db: Session = Depends(get_db)):
     """РџРѕРєР°Р·Р°С‚СЊ СЃС‚СЂР°РЅРёС†Сѓ РјРѕРЅРёС‚РѕСЂРёРЅРіР° РІРёС‚СЂРёРЅРЅС‹С… С†РµРЅ."""
+    ensure_price_monitor_schema()
+    rows = _build_rows(db)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse(
+            content=[
+                {
+                    "sku": row["sku"],
+                    "name": row["name"],
+                    "base_price": row["base_price"],
+                    "price_with_spp": row["price_with_spp"],
+                    "price_without_spp": row["price_without_spp"],
+                    "percent_with_spp": row["percent_with_spp"],
+                    "percent_without_spp": row["percent_without_spp"],
+                    "updated_at": row["updated_at"],
+                }
+                for row in rows
+            ]
+        )
+
     return templates.TemplateResponse(
         "price_monitor.html",
         {
             "request": request,
-            "rows": _build_rows(db),
+            "rows": rows,
             "message": request.query_params.get("message", ""),
         },
     )
@@ -134,12 +182,21 @@ async def add_monitored_product(request: Request, db: Session = Depends(get_db))
     """Р”РѕР±Р°РІРёС‚СЊ С‚РѕРІР°СЂ РІ РјРѕРЅРёС‚РѕСЂРёРЅРі С†РµРЅ СЃ РІР°Р»РёРґР°С†РёРµР№ Рё РїРѕРЅСЏС‚РЅС‹РјРё РѕС€РёР±РєР°РјРё."""
     logger.info("Р’С…РѕРґ РІ РјР°СЂС€СЂСѓС‚ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР° /price-monitor/add")
     Base.metadata.create_all(bind=engine)
+    ensure_price_monitor_schema()
 
     try:
         form = await request.form()
         sku = str(form.get("sku") or "").strip()
         product_name = str(form.get("product_name") or "").strip()
         url = str(form.get("url") or "").strip()
+        base_price_raw = str(form.get("base_price") or "").strip()
+        try:
+            base_price = float(base_price_raw.replace(",", ".")) if base_price_raw else None
+        except ValueError:
+            return RedirectResponse(
+                url=f"/price-monitor/?message={quote('Цена до скидки должна быть числом')}",
+                status_code=303,
+            )
 
         logger.info("РџРѕР»СѓС‡РµРЅС‹ РґР°РЅРЅС‹Рµ С„РѕСЂРјС‹ РґРѕР±Р°РІР»РµРЅРёСЏ С‚РѕРІР°СЂР°: sku=%s product_name=%s url=%s", sku, product_name, url)
 
@@ -164,7 +221,7 @@ async def add_monitored_product(request: Request, db: Session = Depends(get_db))
                 status_code=303,
             )
 
-        product = MonitoredProduct(sku=sku, product_name=product_name, url=url)
+        product = MonitoredProduct(sku=sku, product_name=product_name, url=url, base_price=base_price)
         db.add(product)
         db.commit()
         db.refresh(product)
@@ -197,11 +254,57 @@ async def add_monitored_product(request: Request, db: Session = Depends(get_db))
         )
 
 
+@router.patch("/product/{product_id}")
+@product_router.patch("/product/{product_id}")
+async def update_monitored_product(product_id: int, request: Request, db: Session = Depends(get_db)):
+    """Обновить ручные поля товара из Excel-таблицы мониторинга."""
+    Base.metadata.create_all(bind=engine)
+    ensure_price_monitor_schema()
+
+    product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
+    if not product:
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "message": "Товар не найден"},
+        )
+
+    try:
+        payload = await request.json()
+    except Exception:
+        form = await request.form()
+        payload = dict(form)
+
+    raw_base_price = payload.get("base_price")
+    try:
+        if raw_base_price in (None, ""):
+            product.base_price = None
+        else:
+            product.base_price = float(str(raw_base_price).replace(",", "."))
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "message": "Цена до скидки должна быть числом"},
+        )
+
+    product.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(product)
+    log_action(db, "price_monitor_base_price_updated", f"Обновлена цена до скидки для sku={product.sku}: {product.base_price}")
+
+    return {
+        "ok": True,
+        "product_id": product.id,
+        "base_price": product.base_price,
+        "updated_at": _to_moscow_string(product.updated_at),
+    }
+
+
 @router.post("/{product_id}/refresh")
 async def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
     """РћР±РЅРѕРІРёС‚СЊ РІРёС‚СЂРёРЅРЅС‹Рµ С†РµРЅС‹ РґР»СЏ РѕРґРЅРѕРіРѕ С‚РѕРІР°СЂР° Рё РІРµСЂРЅСѓС‚СЊ РґРёР°РіРЅРѕСЃС‚РёРєСѓ РїСЂРё РѕС€РёР±РєРµ."""
     logger.info("Р’С…РѕРґ РІ РјР°СЂС€СЂСѓС‚ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅС‹ РІРёС‚СЂРёРЅС‹: product_id=%s", product_id)
     Base.metadata.create_all(bind=engine)
+    ensure_price_monitor_schema()
 
     product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
     if not product:

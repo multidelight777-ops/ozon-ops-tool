@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Диагностика env-переменных: %s", env_presence_map())
     Base.metadata.create_all(bind=engine)
+    price_monitor.ensure_price_monitor_schema()
     start_telegram_bot()
     yield
     stop_scheduler()
@@ -42,6 +43,7 @@ app.include_router(tasks.router)
 app.include_router(reviews.router)
 app.include_router(discount_requests.router)
 app.include_router(price_monitor.router)
+app.include_router(price_monitor.product_router)
 
 
 @app.on_event("startup")

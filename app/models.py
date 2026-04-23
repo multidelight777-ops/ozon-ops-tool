@@ -116,4 +116,6 @@ class MonitoredProduct(Base):
     sku: Mapped[str] = mapped_column(String(100), default="", index=True)
     product_name: Mapped[str] = mapped_column(String(255), default="")
     url: Mapped[str] = mapped_column(String(500), default="")
+    base_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
