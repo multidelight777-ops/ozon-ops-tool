@@ -113,6 +113,7 @@ class OzonPriceMonitor:
                         if attempt == 1:
                             raise exc
                         await asyncio.sleep(2)
+
                 context = await browser.new_context(
                     user_agent=(
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -133,85 +134,109 @@ class OzonPriceMonitor:
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout_ms)
 
-                await self._open_product_page(page, url)
-                await page.wait_for_timeout(random.randint(3000, 7000))
+                for attempt in range(3):
+                    logger.info("Попытка парсинга Ozon: attempt=%s url=%s", attempt + 1, url)
+                    await self._open_product_page(page, url)
 
-                page_title = await page.title()
-                final_url = page.url
-                await page.screenshot(path="app/data/debug/debug.png")
+                    await page.mouse.move(200, 300)
+                    await page.mouse.move(400, 500)
+                    await page.mouse.wheel(0, 3000)
+                    await page.wait_for_timeout(random.randint(3000, 7000))
 
-                html = await page.content()
-                with open("app/data/debug/last_page.html", "w", encoding="utf-8") as file:
-                    file.write(html)
-                print("HTML SAVED")
+                    try:
+                        await page.wait_for_selector("span:has-text('₽')", timeout=7000)
+                    except Exception:
+                        logger.warning("Цена не появилась в DOM")
 
-                contains_ruble = "₽" in html or "₽" in page_title
-                logger.info(
-                    "Диагностика страницы Ozon: requested_url=%s, final_url=%s, title=%s, html_length=%s, contains_ruble=%s",
-                    url,
-                    final_url,
-                    page_title,
-                    len(html),
-                    contains_ruble,
-                )
-                await self._dump_debug_html(html, "latest_price_monitor_page")
+                    page_title = await page.title()
+                    final_url = page.url
+                    await page.screenshot(path="app/data/debug/debug.png")
 
-                if self._looks_like_block_page(page_title, html):
-                    logger.warning(
-                        "Страница Ozon выглядит как блокировка: url=%s, final_url=%s, title=%s, html_snippet=%s",
+                    html = await page.content()
+                    with open("app/data/debug/last_page.html", "w", encoding="utf-8") as file:
+                        file.write(html)
+                    print("HTML SAVED")
+
+                    contains_ruble = "₽" in html or "₽" in page_title
+                    logger.info(
+                        "Диагностика страницы Ozon: requested_url=%s, final_url=%s, title=%s, html_length=%s, contains_ruble=%s",
                         url,
                         final_url,
                         page_title,
-                        html[:1000],
+                        len(html),
+                        contains_ruble,
                     )
-                    with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
-                        file.write(html)
-                    return {
-                        "price_with_spp": None,
-                        "price_without_spp": None,
-                    }
+                    await self._dump_debug_html(html, "latest_price_monitor_page")
 
-                price_with_spp_text = await self._find_price_text(page, PRICE_WITH_SPP_SELECTORS, "price_with_spp", url)
-                price_without_spp_text = await self._find_price_text(page, PRICE_WITHOUT_SPP_SELECTORS, "price_without_spp", url)
+                    if self._looks_like_block_page(page_title, html):
+                        logger.warning(
+                            "Страница Ozon выглядит как блокировка: url=%s, final_url=%s, title=%s, html_snippet=%s",
+                            url,
+                            final_url,
+                            page_title,
+                            html[:1000],
+                        )
+                        with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
+                            file.write(html)
+                        await page.wait_for_timeout(random.randint(4000, 8000))
+                        continue
 
-                if price_with_spp_text is None:
-                    price_with_spp_text = await self._find_generic_price_text(page, url, "generic_with_spp")
+                    price_with_spp_text = await self._find_price_text(page, PRICE_WITH_SPP_SELECTORS, "price_with_spp", url)
+                    price_without_spp_text = await self._find_price_text(page, PRICE_WITHOUT_SPP_SELECTORS, "price_without_spp", url)
 
-                if price_without_spp_text is None:
-                    price_without_spp_text = await self._find_second_generic_price_text(page, url)
+                    if price_with_spp_text is None:
+                        price_with_spp_text = await self._find_generic_price_text(page, url, "generic_with_spp")
 
-                price_with_spp = self._clean_price(price_with_spp_text)
-                price_without_spp = self._clean_price(price_without_spp_text)
+                    if price_without_spp_text is None:
+                        price_without_spp_text = await self._find_second_generic_price_text(page, url)
 
-                logger.info(
-                    "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
-                    url,
-                    final_url,
-                    page_title,
-                    price_with_spp_text,
-                    price_without_spp_text,
-                    price_with_spp,
-                    price_without_spp,
-                )
+                    price_with_spp = self._clean_price(price_with_spp_text)
+                    price_without_spp = self._clean_price(price_without_spp_text)
 
-                if price_with_spp is None and price_without_spp is None:
+                    if price_with_spp is None and price_without_spp is None:
+                        texts = await page.locator("span").all_inner_texts()
+                        for text in texts:
+                            if "₽" in text:
+                                parsed = self._clean_price(text)
+                                if parsed:
+                                    logger.info("Цена найдена через усиленный fallback: url=%s text=%s price=%s", url, text, parsed)
+                                    return {
+                                        "price_with_spp": parsed,
+                                        "price_without_spp": None,
+                                    }
+
+                    logger.info(
+                        "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
+                        url,
+                        final_url,
+                        page_title,
+                        price_with_spp_text,
+                        price_without_spp_text,
+                        price_with_spp,
+                        price_without_spp,
+                    )
+
+                    if price_with_spp is not None or price_without_spp is not None:
+                        return {
+                            "price_with_spp": price_with_spp,
+                            "price_without_spp": price_without_spp,
+                        }
+
                     print("PRICE NOT FOUND")
                     with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
                         file.write(html)
                     logger.warning(
-                        "Цена не найдена: url=%s, final_url=%s, title=%s",
+                        "Цена не найдена: attempt=%s url=%s final_url=%s title=%s",
+                        attempt + 1,
                         url,
                         final_url,
                         page_title,
                     )
-                    return {
-                        "price_with_spp": None,
-                        "price_without_spp": None,
-                    }
+                    await page.wait_for_timeout(random.randint(4000, 8000))
 
                 return {
-                    "price_with_spp": price_with_spp,
-                    "price_without_spp": price_without_spp,
+                    "price_with_spp": None,
+                    "price_without_spp": None,
                 }
         except PlaywrightTimeoutError:
             logger.exception("Таймаут при мониторинге цены Ozon: url=%s", url)
