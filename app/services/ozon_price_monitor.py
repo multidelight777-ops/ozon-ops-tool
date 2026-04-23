@@ -39,6 +39,8 @@ PRICE_WITH_SPP_SELECTORS = [
 PRICE_WITHOUT_SPP_SELECTORS = [
     "span:has-text('без Ozon Банка')",
     "div:has-text('без Ozon Банка') span",
+    "span.tsBodyControl400Small:has-text('без')",
+    "div.tsBodyControl400Small:has-text('без') span",
 ]
 GENERIC_PRICE_SELECTORS = [
     "span:has-text('₽')",
@@ -192,9 +194,19 @@ class OzonPriceMonitor:
 
                     price_with_spp = self._clean_price(price_with_spp_text)
                     price_without_spp = self._clean_price(price_without_spp_text)
+                    all_prices = []
+                    texts = await page.locator("span").all_inner_texts()
+                    for text in texts:
+                        if "₽" in text:
+                            price = self._clean_price(text)
+                            if price:
+                                all_prices.append(price)
+                    logger.info("ALL PRICES FOUND: %s", all_prices)
+                    if len(all_prices) >= 2:
+                        price_with_spp = min(all_prices)
+                        price_without_spp = max(all_prices)
 
                     if price_with_spp is None and price_without_spp is None:
-                        texts = await page.locator("span").all_inner_texts()
                         for text in texts:
                             if "₽" in text:
                                 parsed = self._clean_price(text)
