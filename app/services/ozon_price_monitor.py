@@ -156,34 +156,52 @@ class OzonPriceMonitor:
                         continue
 
                     price_block = page.locator("[data-widget='webPrice']").first
+                    if await price_block.count() == 0:
+                        logger.warning("Основной блок цены Ozon не найден: selector=[data-widget='webPrice']")
+                        await page.wait_for_timeout(random.randint(4000, 8000))
+                        continue
+
+                    price_with_spp_text = None
+                    price_without_spp_text = None
+
+                    try:
+                        el = price_block.locator("span.tsHeadline600Large").first
+                        if await el.count() > 0:
+                            price_with_spp_text = await el.inner_text()
+                    except Exception:
+                        pass
+
+                    try:
+                        el2 = price_block.locator("span[class*='tsHeadline500Medium']").first
+                        if await el2.count() > 0:
+                            price_without_spp_text = await el2.inner_text()
+                    except Exception:
+                        pass
+
+                    price_with_spp = self._clean_price(price_with_spp_text)
+                    price_without_spp = self._clean_price(price_without_spp_text)
                     prices = []
 
-                    if await price_block.count() > 0:
+                    if price_without_spp_text is None:
                         texts = await price_block.locator("span").all_inner_texts()
                         for text in texts:
                             if "₽" in text:
                                 cleaned = self._clean_price(text)
                                 if cleaned:
                                     prices.append(cleaned)
-                    else:
-                        logger.warning("Основной блок цены Ozon не найден: selector=[data-widget='webPrice']")
 
-                    logger.info("PRICE BLOCK PARSED: %s", prices)
-
-                    price_with_spp = None
-                    price_without_spp = None
-
-                    if len(prices) >= 1:
-                        price_with_spp = prices[0]
-
-                    if len(prices) >= 2:
+                    if price_without_spp is None and len(prices) >= 2:
                         price_without_spp = prices[1]
 
+                    logger.info("PRICE BLOCK PARSED: %s", prices)
+                    logger.info("FINAL OZON PRICES: spp=%s, no_spp=%s", price_with_spp, price_without_spp)
                     logger.info(
-                        "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, prices=%s, price_with_spp=%s, price_without_spp=%s",
+                        "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, prices=%s, price_with_spp=%s, price_without_spp=%s",
                         url,
                         final_url,
                         page_title,
+                        price_with_spp_text,
+                        price_without_spp_text,
                         prices,
                         price_with_spp,
                         price_without_spp,
