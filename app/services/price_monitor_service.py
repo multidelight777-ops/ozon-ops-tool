@@ -33,6 +33,7 @@ async def refresh_all_prices() -> dict[str, int]:
         for product in products:
             stats["processed"] += 1
             try:
+                print(f"[AUTO] parsing {product.sku} {product.url}")
                 result = await monitor.get_price(product.url)
                 logger.info(
                     "%s: %s / %s",
@@ -55,6 +56,10 @@ async def refresh_all_prices() -> dict[str, int]:
                     price_without_spp=result.get("price_without_spp"),
                     checked_at=datetime.utcnow(),
                 )
+                # In the current schema there is no separate last_checked field,
+                # so we update the product timestamp alongside the history row.
+                product.updated_at = datetime.utcnow()
+                db.add(product)
                 db.add(price_row)
                 db.commit()
                 stats["updated"] += 1
@@ -70,6 +75,7 @@ async def refresh_all_prices() -> dict[str, int]:
                 )
             except Exception as exc:
                 stats["errors"] += 1
+                print(f"[AUTO] ERROR {product.sku}: {exc}")
                 log_action(
                     db,
                     "price_monitor_auto_refresh_error",

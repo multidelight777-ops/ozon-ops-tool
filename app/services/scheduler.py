@@ -16,9 +16,9 @@ from app.services.telegram_bot import send_ready_for_review_message
 from app.services.telegram_service import send_telegram_message
 
 
-scheduler = AsyncIOScheduler()
 logger = logging.getLogger("app.scheduler")
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+scheduler = AsyncIOScheduler(timezone=MOSCOW_TZ)
 
 
 def _send_due_task_notifications() -> None:
@@ -147,8 +147,14 @@ def _process_ozon_reviews() -> None:
 
 
 async def run_price_monitor_job() -> None:
-    """Каждый час обновлять цены витрины для всех товаров мониторинга."""
-    print(f"[SCHEDULER] START {datetime.now(MOSCOW_TZ)}")
+    """Hourly refresh of storefront prices for all monitored products."""
+    now_moscow = datetime.now(MOSCOW_TZ)
+    if not 8 <= now_moscow.hour <= 22:
+        print(f"[AUTO] SKIP UPDATE outside window: {now_moscow}")
+        logger.info("Автообновление цен пропущено: текущее время вне диапазона 08:00-22:00 МСК (%s)", now_moscow)
+        return
+
+    print(f"[AUTO] START UPDATE {now_moscow}")
     logger.info("Запуск автообновления цен витрины")
     stats = await refresh_all_prices()
     logger.info(
@@ -157,7 +163,7 @@ async def run_price_monitor_job() -> None:
         stats.get("errors"),
         stats.get("duration_seconds"),
     )
-    print("[SCHEDULER] DONE")
+    print("[AUTO] FINISH UPDATE")
 
 
 def start_scheduler() -> None:
@@ -189,7 +195,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         run_price_monitor_job,
         CronTrigger(
-            hour="8-19",
+            hour="8-22",
             minute=0,
             timezone=MOSCOW_TZ,
         ),
