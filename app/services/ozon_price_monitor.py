@@ -22,29 +22,12 @@ logger = logging.getLogger("app.ozon_price_monitor")
 
 DEFAULT_TIMEOUT_MS = 30000
 PLAYWRIGHT_BROWSER_ENGINE = "chromium"
-DEFAULT_BROWSER_ARGS = [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--disable-blink-features=AutomationControlled",
-]
 DEBUG_HTML_DIR = Path(BASE_DIR) / "app" / "data" / "debug"
-
-PRICE_WITH_SPP_SELECTORS = [
-    "[data-widget='webPrice']",
+PRICE_BLOCK_SELECTOR = "[data-widget='webPrice']"
+PRIMARY_PRICE_SELECTORS = [
     "[data-widget='webPrice'] span",
-    "span:has-text('₽')",
-]
-PRICE_WITHOUT_SPP_SELECTORS = [
-    "span:has-text('без Ozon Банка')",
-    "div:has-text('без Ozon Банка') span",
-    "span.tsBodyControl400Small:has-text('без')",
-    "div.tsBodyControl400Small:has-text('без') span",
-]
-GENERIC_PRICE_SELECTORS = [
-    "span:has-text('₽')",
-    "div:has-text('₽')",
+    "[data-widget='webPrice']",
+    "span.tsHeadline600Large",
 ]
 NEGATIVE_PAGE_MARKERS = [
     "captcha",
@@ -60,16 +43,14 @@ class OzonPriceMonitor:
 
     def __init__(self, timeout_ms: int | None = None) -> None:
         self.timeout_ms = timeout_ms or settings.PRICE_MONITOR_TIMEOUT_MS or DEFAULT_TIMEOUT_MS
-        self.browser_args = list(DEFAULT_BROWSER_ARGS)
 
     async def get_price(self, url: str) -> dict[str, float | None]:
-        """Открыть карточку товара и вернуть цены с СПП и без СПП."""
+        """Открыть карточку товара и взять цены только из основного блока цены Ozon."""
         logger.info("Запуск мониторинга цены Ozon: url=%s", url)
         print("START PARSING:", url)
         os.makedirs("app/data/debug", exist_ok=True)
 
         browser: Browser | None = None
-        context: BrowserContext | None = None
         html = ""
         page_title = ""
         final_url = url
@@ -82,7 +63,6 @@ class OzonPriceMonitor:
                 "username": "p3CrpmrE",
                 "password": "WaWYAaFF",
             }
-
             launch_options = {
                 "headless": True,
                 "args": [
@@ -139,16 +119,10 @@ class OzonPriceMonitor:
                 for attempt in range(3):
                     logger.info("Попытка парсинга Ozon: attempt=%s url=%s", attempt + 1, url)
                     await self._open_product_page(page, url)
-
                     await page.mouse.move(200, 300)
                     await page.mouse.move(400, 500)
                     await page.mouse.wheel(0, 3000)
                     await page.wait_for_timeout(random.randint(3000, 7000))
-
-                    try:
-                        await page.wait_for_selector("span:has-text('₽')", timeout=7000)
-                    except Exception:
-                        logger.warning("Цена не появилась в DOM")
 
                     page_title = await page.title()
                     final_url = page.url
@@ -159,14 +133,12 @@ class OzonPriceMonitor:
                         file.write(html)
                     print("HTML SAVED")
 
-                    contains_ruble = "₽" in html or "₽" in page_title
                     logger.info(
-                        "Диагностика страницы Ozon: requested_url=%s, final_url=%s, title=%s, html_length=%s, contains_ruble=%s",
+                        "Диагностика страницы Ozon: requested_url=%s, final_url=%s, title=%s, html_length=%s",
                         url,
                         final_url,
                         page_title,
                         len(html),
-                        contains_ruble,
                     )
                     await self._dump_debug_html(html, "latest_price_monitor_page")
 
@@ -183,39 +155,31 @@ class OzonPriceMonitor:
                         await page.wait_for_timeout(random.randint(4000, 8000))
                         continue
 
-                    price_with_spp_text = await self._find_price_text(page, PRICE_WITH_SPP_SELECTORS, "price_with_spp", url)
-                    price_without_spp_text = await self._find_price_text(page, PRICE_WITHOUT_SPP_SELECTORS, "price_without_spp", url)
+                    try:
+                        await page.wait_for_selector(PRICE_BLOCK_SELECTOR, timeout=7000)
+                    except Exception:
+                        logger.warning("Основной блок цены Ozon не появился в DOM")
 
-                    if price_with_spp_text is None:
-                        price_with_spp_text = await self._find_generic_price_text(page, url, "generic_with_spp")
+                    price_with_spp_text = await self._find_primary_price_text(page, url)
+                    price_block = page.locator(PRICE_BLOCK_SELECTOR).first
+                    prices = await price_block.locator("span").all_inner_texts()
+                    prices = [price for price in prices if "₽" in price]
+                    logger.info("PRICE BLOCK TEXTS: %s", prices)
 
-                    if price_without_spp_text is None:
-                        price_without_spp_text = await self._find_second_generic_price_text(page, url)
+                    if price_with_spp_text is None and len(prices) >= 1:
+                        price_with_spp_text = prices[0]
+                    price_without_spp_text = prices[1] if len(prices) >= 2 else None
 
+                    logger.info("PRIMARY PRICE TEXT: %s", price_with_spp_text)
                     price_with_spp = self._clean_price(price_with_spp_text)
                     price_without_spp = self._clean_price(price_without_spp_text)
-                    all_prices = []
-                    texts = await page.locator("span").all_inner_texts()
-                    for text in texts:
-                        if "₽" in text:
-                            price = self._clean_price(text)
-                            if price:
-                                all_prices.append(price)
-                    logger.info("ALL PRICES FOUND: %s", all_prices)
-                    if len(all_prices) >= 2:
-                        price_with_spp = min(all_prices)
-                        price_without_spp = max(all_prices)
 
-                    if price_with_spp is None and price_without_spp is None:
-                        for text in texts:
-                            if "₽" in text:
-                                parsed = self._clean_price(text)
-                                if parsed:
-                                    logger.info("Цена найдена через усиленный fallback: url=%s text=%s price=%s", url, text, parsed)
-                                    return {
-                                        "price_with_spp": parsed,
-                                        "price_without_spp": None,
-                                    }
+                    if price_with_spp is not None and price_with_spp > 100000:
+                        logger.warning("Основная цена выглядит как мусор и будет проигнорирована: %s", price_with_spp)
+                        price_with_spp = None
+                    if price_without_spp is not None and price_without_spp > 100000:
+                        logger.warning("Цена без СПП выглядит как мусор и будет проигнорирована: %s", price_without_spp)
+                        price_without_spp = None
 
                     logger.info(
                         "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
@@ -238,7 +202,7 @@ class OzonPriceMonitor:
                     with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
                         file.write(html)
                     logger.warning(
-                        "Цена не найдена: attempt=%s url=%s final_url=%s title=%s",
+                        "Цена не найдена в основном блоке: attempt=%s url=%s final_url=%s title=%s",
                         attempt + 1,
                         url,
                         final_url,
@@ -280,56 +244,21 @@ class OzonPriceMonitor:
         await page.mouse.wheel(0, 3000)
         await page.wait_for_timeout(2000)
 
-    async def _find_price_text(self, page: Page, selectors: list[str], label: str, url: str) -> str | None:
-        """Найти цену по списку селекторов."""
-        for selector in selectors:
-            text = await self._extract_text_by_selector(page, selector, label, url)
-            if text:
-                return text
-        return None
-
-    async def _find_generic_price_text(self, page: Page, url: str, label: str) -> str | None:
-        """Найти первую попавшуюся цену с рублём на странице."""
-        for selector in GENERIC_PRICE_SELECTORS:
-            text = await self._extract_text_by_selector(page, selector, label, url)
-            if text and self._clean_price(text) is not None:
-                return text
-
-        all_spans = await page.locator("span").all_inner_texts()
-        for text in all_spans:
-            if "₽" in text and self._clean_price(text) is not None:
-                logger.info("Найдена fallback-цена по span: url=%s label=%s text=%s", url, label, text)
-                return text
-        return None
-
-    async def _find_second_generic_price_text(self, page: Page, url: str) -> str | None:
-        """Найти вторую цену с рублём, если отдельный селектор без СПП не сработал."""
-        candidates: list[str] = []
-        all_spans = await page.locator("span").all_inner_texts()
-
-        for text in all_spans:
-            if "₽" in text and self._clean_price(text) is not None:
-                candidates.append(text)
-
-        logger.info("Fallback-кандидаты цен: url=%s candidates=%s", url, candidates[:10])
-        if len(candidates) > 1:
-            return candidates[1]
-        return None
-
-    async def _extract_text_by_selector(self, page: Page, selector: str, label: str, url: str) -> str | None:
-        """Аккуратно прочитать текст по селектору без падения."""
-        try:
-            locator = page.locator(selector)
-            count = await locator.count()
-            if count > 0:
+    async def _find_primary_price_text(self, page: Page, url: str) -> str | None:
+        """Найти основную цену только через селекторы основного блока цены."""
+        for selector in PRIMARY_PRICE_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                if count == 0:
+                    logger.info("Селектор основной цены не найден: url=%s selector=%s", url, selector)
+                    continue
                 text = await locator.first.inner_text()
-                logger.info("Селектор найден: url=%s label=%s selector=%s text=%s", url, label, selector, text)
+                logger.info("Селектор основной цены найден: url=%s selector=%s text=%s", url, selector, text)
                 return text
-            logger.info("Селектор не найден: url=%s label=%s selector=%s", url, label, selector)
-            return None
-        except Exception as exc:
-            logger.warning("Ошибка чтения по селектору: url=%s label=%s selector=%s error=%s", url, label, selector, exc)
-            return None
+            except Exception as exc:
+                logger.warning("Ошибка чтения основной цены: url=%s selector=%s error=%s", url, selector, exc)
+        return None
 
     async def _dump_debug_html(self, html: str, label: str) -> None:
         """Сохранить HTML страницы в debug-файл для диагностики."""
@@ -363,15 +292,6 @@ class OzonPriceMonitor:
         except ValueError:
             logger.warning("Не удалось преобразовать цену в float: raw_text=%s normalized=%s", raw_text, normalized)
             return None
-
-    def _normalize_headless(self, value: object) -> bool:
-        """Надёжно нормализовать строковое значение headless из .env."""
-        normalized = str(value).strip().lower()
-        if normalized in {"true", "1", "yes"}:
-            return True
-        if normalized in {"false", "0", "no"}:
-            return False
-        return False
 
     def _looks_like_block_page(self, title: str, html: str) -> bool:
         """Проверить, не вернул ли Ozon капчу, 403 или заглушку вместо карточки товара."""
