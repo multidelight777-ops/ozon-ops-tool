@@ -75,7 +75,6 @@ class OzonPriceMonitor:
         try:
             playwright_version = self._get_playwright_version()
             headless_env_value = settings.PRICE_MONITOR_HEADLESS or "false"
-            headless = self._normalize_headless(headless_env_value)
             proxy = None
             if settings.PROXY_SERVER:
                 proxy = {"server": settings.PROXY_SERVER}
@@ -85,7 +84,7 @@ class OzonPriceMonitor:
                     proxy["password"] = settings.PROXY_PASSWORD
 
             launch_options = {
-                "headless": False,
+                "headless": True,
                 "args": [
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
@@ -98,7 +97,7 @@ class OzonPriceMonitor:
                 launch_options["proxy"] = proxy
 
             logger.info("PRICE_MONITOR_HEADLESS=%s", headless_env_value)
-            logger.info("Playwright headless=%s", headless)
+            logger.info("Playwright headless=%s", launch_options["headless"])
             logger.info("Playwright package version=%s", playwright_version)
             logger.info("Browser engine=%s", PLAYWRIGHT_BROWSER_ENGINE)
             logger.info("Параметры запуска Playwright=%s", launch_options)
