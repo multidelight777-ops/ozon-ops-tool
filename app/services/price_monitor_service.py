@@ -1,6 +1,6 @@
-﻿from datetime import datetime
-import time
+from datetime import datetime
 import logging
+import time
 
 from sqlalchemy.orm import Session
 
@@ -13,11 +13,23 @@ from app.services.ozon_price_monitor import OzonPriceMonitor
 logger = logging.getLogger("app.price_monitor_service")
 
 
-async def refresh_all_prices() -> dict[str, int]:
-    """РћР±РЅРѕРІРёС‚СЊ С†РµРЅС‹ РІРёС‚СЂРёРЅС‹ РґР»СЏ РІСЃРµС… С‚РѕРІР°СЂРѕРІ РёР· РјРѕРЅРёС‚РѕСЂРёРЅРіР°."""
+def _calculate_percents(product: MonitoredProduct) -> None:
+    """Persist percentages on the product snapshot when base_price is available."""
+    product.percent_with_spp = None
+    product.percent_without_spp = None
+
+    if product.base_price and product.base_price > 0:
+        if product.price_with_spp:
+            product.percent_with_spp = round((product.price_with_spp / product.base_price) * 100, 2)
+        if product.price_without_spp:
+            product.percent_without_spp = round((product.price_without_spp / product.base_price) * 100, 2)
+
+
+async def refresh_all_prices() -> dict[str, int | float]:
+    """Refresh storefront prices for all monitored products and save snapshot + history."""
     db: Session = SessionLocal()
     started_at = time.perf_counter()
-    stats = {
+    stats: dict[str, int | float] = {
         "processed": 0,
         "updated": 0,
         "errors": 0,
@@ -28,20 +40,17 @@ async def refresh_all_prices() -> dict[str, int]:
         products = db.query(MonitoredProduct).order_by(MonitoredProduct.created_at.desc()).all()
         monitor = OzonPriceMonitor()
 
-        logger.info("РЎС‚Р°СЂС‚ РјР°СЃСЃРѕРІРѕРіРѕ РѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅ РІРёС‚СЂРёРЅС‹. РўРѕРІР°СЂРѕРІ РІ РјРѕРЅРёС‚РѕСЂРёРЅРіРµ: %s", len(products))
+        logger.info("Старт массового обновления цен. Товаров: %s", len(products))
 
         for product in products:
             stats["processed"] += 1
             try:
                 print(f"[AUTO] parsing {product.sku} {product.url}")
                 result = await monitor.get_price(product.url)
-                logger.info(
-                    "%s: %s / %s",
-                    product.sku,
-                    result.get("price_with_spp"),
-                    result.get("price_without_spp"),
-                )
-                if result.get("price_with_spp") is None and result.get("price_without_spp") is None:
+
+                price_with_spp = result.get("price_with_spp")
+                price_without_spp = result.get("price_without_spp")
+                if price_with_spp is None and price_without_spp is None:
                     stats["errors"] += 1
                     log_action(
                         db,
@@ -49,42 +58,50 @@ async def refresh_all_prices() -> dict[str, int]:
                         f"Ошибка автообновления цен для sku={product.sku}: парсер не нашёл цену.",
                     )
                     continue
+
+                now_utc = datetime.utcnow()
+                product.price_with_spp = price_with_spp
+                product.price_without_spp = price_without_spp
+                product.last_checked = now_utc
+                product.updated_at = now_utc
+                _calculate_percents(product)
+
                 price_row = PriceMonitor(
                     sku=product.sku,
                     url=product.url,
-                    price_with_spp=result.get("price_with_spp"),
-                    price_without_spp=result.get("price_without_spp"),
-                    checked_at=datetime.utcnow(),
+                    price_with_spp=price_with_spp,
+                    price_without_spp=price_without_spp,
+                    checked_at=now_utc,
                 )
-                # In the current schema there is no separate last_checked field,
-                # so we update the product timestamp alongside the history row.
-                product.updated_at = datetime.utcnow()
+
                 db.add(product)
                 db.add(price_row)
                 db.commit()
+                db.refresh(product)
                 stats["updated"] += 1
 
                 log_action(
                     db,
                     "price_monitor_auto_refreshed",
                     (
-                        f"РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ С†РµРЅ РґР»СЏ sku={product.sku}. "
-                        f"price_with_spp={result.get('price_with_spp')}, "
-                        f"price_without_spp={result.get('price_without_spp')}."
+                        f"Автообновление цен для sku={product.sku}. "
+                        f"price_with_spp={price_with_spp}, price_without_spp={price_without_spp}, "
+                        f"percent_with_spp={product.percent_with_spp}, percent_without_spp={product.percent_without_spp}."
                     ),
                 )
             except Exception as exc:
                 stats["errors"] += 1
+                db.rollback()
                 print(f"[AUTO] ERROR {product.sku}: {exc}")
                 log_action(
                     db,
                     "price_monitor_auto_refresh_error",
-                    f"РћС€РёР±РєР° Р°РІС‚РѕРѕР±РЅРѕРІР»РµРЅРёСЏ С†РµРЅ РґР»СЏ sku={product.sku}: {exc}",
+                    f"Ошибка автообновления цен для sku={product.sku}: {exc}",
                 )
 
         stats["duration_seconds"] = round(time.perf_counter() - started_at, 2)
         logger.info(
-            "РњР°СЃСЃРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ С†РµРЅ РІРёС‚СЂРёРЅС‹ Р·Р°РІРµСЂС€РµРЅРѕ. updated=%s, errors=%s, duration_seconds=%s",
+            "Массовое обновление цен завершено. updated=%s, errors=%s, duration_seconds=%s",
             stats["updated"],
             stats["errors"],
             stats["duration_seconds"],
@@ -92,4 +109,3 @@ async def refresh_all_prices() -> dict[str, int]:
         return stats
     finally:
         db.close()
-

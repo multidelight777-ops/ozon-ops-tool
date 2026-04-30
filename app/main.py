@@ -9,7 +9,6 @@ from app.config import BASE_DIR, ENV_FILE_PATH, env_presence_map, settings
 from app.database import Base, DATABASE_URL, engine
 from app.routers import dashboard, discount_requests, price_monitor, reviews, tasks
 from app.services.scheduler import start_scheduler, stop_scheduler
-from app.services.telegram_bot import start_telegram_bot, stop_telegram_bot
 
 
 logger = logging.getLogger("app.main")
@@ -29,10 +28,8 @@ async def lifespan(app: FastAPI):
     logger.info("Диагностика env-переменных: %s", env_presence_map())
     Base.metadata.create_all(bind=engine)
     price_monitor.ensure_price_monitor_schema()
-    start_telegram_bot()
     yield
     stop_scheduler()
-    stop_telegram_bot()
 
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
@@ -47,6 +44,7 @@ app.include_router(price_monitor.product_router)
 
 
 @app.on_event("startup")
-async def startup_event():
+def startup_event():
+    print("STARTING SCHEDULER...")
     start_scheduler()
     logger.info("Scheduler запущен")

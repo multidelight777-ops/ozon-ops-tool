@@ -208,3 +208,26 @@ SKU-001,2026-03-20 10:00,120,fbo,1499,Priority delivery,Plan for SKU-001
 - сервис: `app/services/ozon_discount_requests_service.py`
 
 Пока это базовый каркас без реальной синхронизации с Ozon API. Следующим шагом сюда можно добавить загрузку заявок, изменение статусов и действия по согласованию.
+## Safe Deploy
+
+Правильный деплой:
+
+```bash
+git fetch
+git reset --hard origin/master
+docker-compose down
+docker-compose up -d --build
+```
+
+Запрещено для обычного деплоя:
+
+```bash
+docker-compose down -v
+```
+
+Почему это важно:
+
+- база SQLite должна лежать в `./data/app.db`
+- контейнер использует volume `./data:/app/data`
+- `down -v` удаляет volume и может привести к потере данных
+- папку `data` на сервере удалять нельзя

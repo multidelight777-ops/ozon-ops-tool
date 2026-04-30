@@ -8,7 +8,6 @@ from pathlib import Path
 
 from playwright.async_api import (
     Browser,
-    BrowserContext,
     Page,
     TimeoutError as PlaywrightTimeoutError,
     async_playwright,
@@ -25,10 +24,19 @@ PLAYWRIGHT_BROWSER_ENGINE = "chromium"
 DEBUG_HTML_DIR = Path(BASE_DIR) / "app" / "data" / "debug"
 NEGATIVE_PAGE_MARKERS = [
     "captcha",
-    "доступ ограничен",
+    "РґРѕСЃС‚СѓРї РѕРіСЂР°РЅРёС‡РµРЅ",
     "403",
     "temporarily unavailable",
     "cloudflare",
+]
+PRICE_WITH_SPP_SELECTORS = [
+    "span.tsHeadline600Large",
+    "[data-widget='webPrice'] span.tsHeadline600Large",
+]
+PRICE_WITHOUT_SPP_SELECTORS = [
+    "span.pdp_bj.tsHeadline500Medium",
+    "span[class*='tsHeadline500Medium']",
+    "[data-widget='webPrice'] span[class*='tsHeadline500Medium']",
 ]
 
 
@@ -45,7 +53,7 @@ class OzonPriceMonitor:
         ]
 
     async def get_price(self, url: str) -> dict[str, float | None]:
-        """Открыть карточку товара и вернуть точные цены из известных CSS-селекторов Ozon."""
+        """Открыть карточку товара и вернуть цены СПП С КАРТОЙ и СПП."""
         logger.info("Запуск мониторинга цены Ozon: url=%s", url)
         print("START PARSING:", url)
         os.makedirs("app/data/debug", exist_ok=True)
@@ -84,7 +92,6 @@ class OzonPriceMonitor:
 
             async with async_playwright() as playwright:
                 logger.info("Chromium executable path=%s", playwright.chromium.executable_path)
-                browser = None
                 for launch_attempt in range(2):
                     try:
                         browser = await playwright.chromium.launch(**launch_options)
@@ -93,7 +100,7 @@ class OzonPriceMonitor:
                     except Exception as exc:
                         logger.warning("Ошибка запуска Chromium, попытка=%s error=%s", launch_attempt + 1, exc)
                         if launch_attempt == 1:
-                            raise exc
+                            raise
                         await asyncio.sleep(2)
 
                 context = await browser.new_context(
@@ -155,54 +162,67 @@ class OzonPriceMonitor:
                         await page.wait_for_timeout(random.randint(4000, 8000))
                         continue
 
-                    price_block = page.locator("[data-widget='webPrice']").first
-                    if await price_block.count() == 0:
-                        logger.warning("Основной блок цены Ozon не найден: selector=[data-widget='webPrice']")
-                        await page.wait_for_timeout(random.randint(4000, 8000))
-                        continue
-
                     price_with_spp_text = None
                     price_without_spp_text = None
 
-                    try:
-                        el = price_block.locator("span.tsHeadline600Large").first
-                        if await el.count() > 0:
-                            price_with_spp_text = await el.inner_text()
-                    except Exception:
-                        pass
+                    price_block = page.locator("[data-widget='webPrice']").first
+                    if await price_block.count() > 0:
+                        try:
+                            el = price_block.locator("span.tsHeadline600Large").first
+                            if await el.count() > 0:
+                                price_with_spp_text = await el.inner_text()
+                        except Exception:
+                            pass
 
-                    try:
-                        el2 = price_block.locator("span[class*='tsHeadline500Medium']").first
-                        if await el2.count() > 0:
-                            price_without_spp_text = await el2.inner_text()
-                    except Exception:
-                        pass
+                        try:
+                            el2 = price_block.locator("span.pdp_bj.tsHeadline500Medium").first
+                            if await el2.count() > 0:
+                                price_without_spp_text = await el2.inner_text()
+                        except Exception:
+                            pass
+
+                        if price_without_spp_text is None:
+                            try:
+                                el3 = price_block.locator("span[class*='tsHeadline500Medium']").first
+                                if await el3.count() > 0:
+                                    price_without_spp_text = await el3.inner_text()
+                            except Exception:
+                                pass
+                    else:
+                        logger.warning("Основной блок цены Ozon не найден: selector=[data-widget='webPrice']")
+
+                        for selector in PRICE_WITH_SPP_SELECTORS:
+                            try:
+                                el = page.locator(selector).first
+                                if await el.count() > 0:
+                                    price_with_spp_text = await el.inner_text()
+                                    break
+                            except Exception:
+                                continue
+
+                        for selector in PRICE_WITHOUT_SPP_SELECTORS:
+                            try:
+                                el = page.locator(selector).first
+                                if await el.count() > 0:
+                                    price_without_spp_text = await el.inner_text()
+                                    break
+                            except Exception:
+                                continue
 
                     price_with_spp = self._clean_price(price_with_spp_text)
                     price_without_spp = self._clean_price(price_without_spp_text)
-                    prices = []
 
-                    if price_without_spp_text is None:
-                        texts = await price_block.locator("span").all_inner_texts()
-                        for text in texts:
-                            if "₽" in text:
-                                cleaned = self._clean_price(text)
-                                if cleaned:
-                                    prices.append(cleaned)
-
-                    if price_without_spp is None and len(prices) >= 2:
-                        price_without_spp = prices[1]
-
-                    logger.info("PRICE BLOCK PARSED: %s", prices)
-                    logger.info("FINAL OZON PRICES: spp=%s, no_spp=%s", price_with_spp, price_without_spp)
+                    logger.info("OZON RAW PRICE WITH SPP CARD: %s", price_with_spp_text)
+                    logger.info("OZON RAW PRICE SPP: %s", price_without_spp_text)
+                    logger.info("OZON FINAL PRICE WITH SPP CARD: %s", price_with_spp)
+                    logger.info("OZON FINAL PRICE SPP: %s", price_without_spp)
                     logger.info(
-                        "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, prices=%s, price_with_spp=%s, price_without_spp=%s",
+                        "Результат парсинга цен Ozon: url=%s, final_url=%s, title=%s, raw_with_spp=%s, raw_without_spp=%s, price_with_spp=%s, price_without_spp=%s",
                         url,
                         final_url,
                         page_title,
                         price_with_spp_text,
                         price_without_spp_text,
-                        prices,
                         price_with_spp,
                         price_without_spp,
                     )
@@ -216,6 +236,7 @@ class OzonPriceMonitor:
                     print("PRICE NOT FOUND")
                     with open("app/data/debug/last_failed_page.html", "w", encoding="utf-8") as file:
                         file.write(html)
+                    logger.warning("Парсер не нашёл цены по актуальным селекторам Ozon")
                     logger.warning(
                         "Цена не найдена по точным селекторам: attempt=%s url=%s final_url=%s title=%s",
                         attempt + 1,

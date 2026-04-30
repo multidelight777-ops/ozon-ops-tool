@@ -1,0 +1,3 @@
+data/app.db
+data/*.db
+app/data/*.db

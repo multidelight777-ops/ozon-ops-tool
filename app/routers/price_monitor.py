@@ -34,6 +34,21 @@ def ensure_price_monitor_schema() -> None:
         if "base_price" not in columns:
             connection.execute(text("ALTER TABLE monitored_products ADD COLUMN base_price FLOAT"))
             logger.info("Добавлена колонка monitored_products.base_price")
+        if "price_with_spp" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN price_with_spp FLOAT"))
+            logger.info("Добавлена колонка monitored_products.price_with_spp")
+        if "price_without_spp" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN price_without_spp FLOAT"))
+            logger.info("Добавлена колонка monitored_products.price_without_spp")
+        if "percent_with_spp" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN percent_with_spp FLOAT"))
+            logger.info("Добавлена колонка monitored_products.percent_with_spp")
+        if "percent_without_spp" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN percent_without_spp FLOAT"))
+            logger.info("Добавлена колонка monitored_products.percent_without_spp")
+        if "last_checked" not in columns:
+            connection.execute(text("ALTER TABLE monitored_products ADD COLUMN last_checked DATETIME"))
+            logger.info("Добавлена колонка monitored_products.last_checked")
         if "updated_at" not in columns:
             connection.execute(text("ALTER TABLE monitored_products ADD COLUMN updated_at DATETIME"))
             connection.execute(text("UPDATE monitored_products SET updated_at = created_at WHERE updated_at IS NULL"))
@@ -80,16 +95,17 @@ def _build_rows(db: Session) -> list[dict]:
             .first()
         )
 
-        price_with_spp = latest_check.price_with_spp if latest_check else None
-        price_without_spp = latest_check.price_without_spp if latest_check else None
+        price_with_spp = product.price_with_spp if product.price_with_spp is not None else (latest_check.price_with_spp if latest_check else None)
+        price_without_spp = product.price_without_spp if product.price_without_spp is not None else (latest_check.price_without_spp if latest_check else None)
         base_price = product.base_price
-        percent_with_spp = None
-        percent_without_spp = None
-        if base_price and base_price > 0:
-            if price_with_spp:
-                percent_with_spp = round((price_with_spp / base_price) * 100, 2)
-            if price_without_spp:
-                percent_without_spp = round((price_without_spp / base_price) * 100, 2)
+        percent_with_spp = product.percent_with_spp
+        percent_without_spp = product.percent_without_spp
+        if percent_with_spp is None or percent_without_spp is None:
+            if base_price and base_price > 0:
+                if price_with_spp:
+                    percent_with_spp = round((price_with_spp / base_price) * 100, 2)
+                if price_without_spp:
+                    percent_without_spp = round((price_without_spp / base_price) * 100, 2)
 
         rows.append(
             {
@@ -103,7 +119,7 @@ def _build_rows(db: Session) -> list[dict]:
                 "percent_with_spp": percent_with_spp,
                 "percent_without_spp": percent_without_spp,
                 "updated_at": _to_moscow_string(product.updated_at),
-                "checked_at": _to_moscow_string(latest_check.checked_at) if latest_check else None,
+                "checked_at": _to_moscow_string(product.last_checked) if product.last_checked else (_to_moscow_string(latest_check.checked_at) if latest_check else None),
             }
         )
 
@@ -144,7 +160,7 @@ def price_monitor_page(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{product_id}/chart", response_class=HTMLResponse)
 def price_monitor_chart_page(product_id: int, request: Request, db: Session = Depends(get_db)):
-    """РџРѕРєР°Р·Р°С‚СЊ РіСЂР°С„РёРє РёСЃС‚РѕСЂРёРё С†РµРЅ РїРѕ РѕРґРЅРѕРјСѓ С‚РѕРІР°СЂСѓ."""
+    """Показать график динамики СПП в процентах от цены в ЛК."""
     product = db.query(MonitoredProduct).filter(MonitoredProduct.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ")
@@ -157,13 +173,22 @@ def price_monitor_chart_page(product_id: int, request: Request, db: Session = De
     )
 
     chart_labels: list[str] = []
-    chart_price_with_spp: list[float | None] = []
-    chart_price_without_spp: list[float | None] = []
+    chart_percent_with_spp: list[float | None] = []
+    chart_percent_without_spp: list[float | None] = []
 
     for item in history:
         chart_labels.append(_to_moscow_string(item.checked_at) or "-")
-        chart_price_with_spp.append(item.price_with_spp)
-        chart_price_without_spp.append(item.price_without_spp)
+        percent_with_spp = None
+        percent_without_spp = None
+
+        if product.base_price and product.base_price > 0:
+            if item.price_with_spp is not None:
+                percent_with_spp = round((item.price_with_spp / product.base_price) * 100, 2)
+            if item.price_without_spp is not None:
+                percent_without_spp = round((item.price_without_spp / product.base_price) * 100, 2)
+
+        chart_percent_with_spp.append(percent_with_spp)
+        chart_percent_without_spp.append(percent_without_spp)
 
     return templates.TemplateResponse(
         "price_monitor_chart.html",
@@ -171,8 +196,8 @@ def price_monitor_chart_page(product_id: int, request: Request, db: Session = De
             "request": request,
             "product": product,
             "chart_labels": chart_labels,
-            "chart_price_with_spp": chart_price_with_spp,
-            "chart_price_without_spp": chart_price_without_spp,
+            "chart_percent_with_spp": chart_percent_with_spp,
+            "chart_percent_without_spp": chart_percent_without_spp,
         },
     )
 
@@ -345,23 +370,38 @@ async def refresh_product_price(product_id: int, db: Session = Depends(get_db)):
                 },
             )
 
+        now_utc = datetime.utcnow()
+        product.price_with_spp = result.get("price_with_spp")
+        product.price_without_spp = result.get("price_without_spp")
+        product.last_checked = now_utc
+        product.updated_at = now_utc
+        product.percent_with_spp = None
+        product.percent_without_spp = None
+        if product.base_price and product.base_price > 0:
+            if product.price_with_spp:
+                product.percent_with_spp = round((product.price_with_spp / product.base_price) * 100, 2)
+            if product.price_without_spp:
+                product.percent_without_spp = round((product.price_without_spp / product.base_price) * 100, 2)
+
         price_row = PriceMonitor(
             sku=product.sku,
             url=product.url,
-            price_with_spp=result.get("price_with_spp"),
-            price_without_spp=result.get("price_without_spp"),
-            checked_at=datetime.utcnow(),
+            price_with_spp=product.price_with_spp,
+            price_without_spp=product.price_without_spp,
+            checked_at=now_utc,
         )
+        db.add(product)
         db.add(price_row)
         db.commit()
+        db.refresh(product)
 
         log_action(
             db,
             "price_monitor_refreshed",
             (
                 f"РћР±РЅРѕРІР»РµРЅС‹ С†РµРЅС‹ С‚РѕРІР°СЂР° sku={product.sku}. "
-                f"Р¦РµРЅР° СЃ РЎРџРџ={result.get('price_with_spp')}, "
-                f"С†РµРЅР° Р±РµР· РЎРџРџ={result.get('price_without_spp')}."
+                f"Р¦РµРЅР° СЃ РЎРџРџ={product.price_with_spp}, "
+                f"С†РµРЅР° Р±РµР· РЎРџРџ={product.price_without_spp}."
             ),
         )
         return RedirectResponse(

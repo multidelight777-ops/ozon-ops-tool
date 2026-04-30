@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -11,17 +12,29 @@ logger = logging.getLogger("app.database")
 
 
 def _resolve_database_url(raw_url: str) -> str:
-    """Нормализовать DATABASE_URL, чтобы относительный sqlite путь не зависел от cwd."""
+    """Normalize sqlite DATABASE_URL and ensure the data directory exists."""
     if raw_url.startswith("sqlite:///./"):
         relative_path = raw_url.replace("sqlite:///./", "", 1)
         absolute_path = (BASE_DIR / Path(relative_path)).resolve()
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
         resolved_url = f"sqlite:///{absolute_path.as_posix()}"
-        logger.info("DATABASE_URL нормализован из относительного пути: raw=%s resolved=%s", raw_url, resolved_url)
+        logger.info("DATABASE_URL normalized: raw=%s resolved=%s", raw_url, resolved_url)
         return resolved_url
+
+    if raw_url.startswith("sqlite:////"):
+        absolute_path = Path(raw_url.replace("sqlite:////", "/", 1))
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        return raw_url
+
     return raw_url
 
 
 DATABASE_URL = _resolve_database_url(settings.DATABASE_URL)
+
+print("[DB] DATABASE_URL=", settings.DATABASE_URL)
+print("[DB] data dir exists:", os.path.exists("/app/data"))
+print("[DB] app.db exists:", os.path.exists("/app/data/app.db"))
+print("[DB] absolute db path:", os.path.abspath("./data/app.db"))
 
 
 engine = create_engine(

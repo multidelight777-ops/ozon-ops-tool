@@ -3,7 +3,7 @@
 {% block content %}
 <section class="page-header">
     <div>
-        <h2>График истории цен</h2>
+        <h2>Динамика СПП в процентах от цены в ЛК</h2>
         <p>{{ product.product_name }} • SKU: {{ product.sku }}</p>
     </div>
     <a href="/price-monitor/" class="secondary-button">Назад к мониторингу</a>
@@ -13,7 +13,7 @@
     <div class="section-head">
         <div>
             <h2>{{ product.product_name }}</h2>
-            <p>История цен по товару с двумя линиями: СПП С КАРТОЙ и СПП.</p>
+            <p>График процента от цены в ЛК для линий СПП С КАРТОЙ и СПП.</p>
         </div>
     </div>
     <canvas id="priceHistoryChart" height="120"></canvas>
@@ -22,8 +22,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     const chartLabels = {{ chart_labels | tojson }};
-    const chartPriceWithSpp = {{ chart_price_with_spp | tojson }};
-    const chartPriceWithoutSpp = {{ chart_price_without_spp | tojson }};
+    const chartPercentWithSpp = {{ chart_percent_with_spp | tojson }};
+    const chartPercentWithoutSpp = {{ chart_percent_without_spp | tojson }};
 
     const ctx = document.getElementById("priceHistoryChart");
 
@@ -33,16 +33,16 @@
             labels: chartLabels,
             datasets: [
                 {
-                    label: "СПП С КАРТОЙ",
-                    data: chartPriceWithSpp,
+                    label: "СПП С КАРТОЙ, %",
+                    data: chartPercentWithSpp,
                     borderColor: "#22C55E",
                     backgroundColor: "rgba(34, 197, 94, 0.15)",
                     tension: 0.25,
                     spanGaps: true
                 },
                 {
-                    label: "СПП",
-                    data: chartPriceWithoutSpp,
+                    label: "СПП, %",
+                    data: chartPercentWithoutSpp,
                     borderColor: "#64748B",
                     backgroundColor: "rgba(100, 116, 139, 0.12)",
                     tension: 0.25,
@@ -66,7 +66,7 @@
                             if (value === null || value === undefined) {
                                 return label + ": -";
                             }
-                            return label + ": " + value + " ₽";
+                            return label + ": " + value + "%";
                         }
                     }
                 }
@@ -76,7 +76,7 @@
                     beginAtZero: false,
                     ticks: {
                         callback: function(value) {
-                            return value + " ₽";
+                            return value + "%";
                         }
                     }
                 }
